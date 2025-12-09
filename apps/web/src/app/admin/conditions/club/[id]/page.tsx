@@ -11,8 +11,40 @@ import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/ui/loading";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Plus, Trash2, Building2 } from "lucide-react";
+import { ArrowLeft, Save, Building2 } from "lucide-react";
 import Link from "next/link";
+
+// Rake ranges definition
+const RAKE_RANGES = [
+  { id: "low", label: "Up to $4,999", min: 0, max: 4999 },
+  { id: "mid", label: "$5,000-$9,999", min: 5000, max: 9999 },
+  { id: "high", label: "Over $10,000", min: 10000, max: null },
+];
+
+// Generate ratios from -1.0 to 1.0 in 0.1 increments
+const RATIOS = Array.from({ length: 21 }, (_, i) => {
+  const ratio = -1 + i * 0.1;
+  return Math.round(ratio * 10) / 10;
+});
+
+type TableData = Record<string, Record<string, number>>;
+
+function getRakeRangeId(rakeMin: number): string {
+  if (rakeMin >= 10000) return "high";
+  if (rakeMin >= 5000) return "mid";
+  return "low";
+}
+
+// Default values based on the standard pattern
+function getDefaultPercentage(ratio: number, rakeRange: string): number {
+  const basePercentages: Record<string, number> = {
+    low: 50,
+    mid: 55,
+    high: 60,
+  };
+  const ratioAdjustment = -ratio * 20;
+  return basePercentages[rakeRange] + ratioAdjustment;
+}
 
 export default function ClubConditionDetailPage() {
   const router = useRouter();
@@ -23,21 +55,13 @@ export default function ClubConditionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [template, setTemplate] = useState<any>(null);
-  const [rules, setRules] = useState<any[]>([]);
 
   const [formData, setFormData] = useState({
     name: "",
     description: "",
   });
 
-  const [newRule, setNewRule] = useState({
-    ratio_min: "",
-    ratio_max: "",
-    hands_min: "",
-    hands_max: "",
-    diamond_percentage: "",
-    priority: "1",
-  });
+  const [tableData, setTableData] = useState<TableData>({});
 
   useEffect(() => {
     loadTemplateData();
@@ -70,14 +94,45 @@ export default function ClubConditionDetailPage() {
       .from("diamond_club_agreement_rules")
       .select("*")
       .eq("template_id", templateId)
-      .order("priority");
+      .order("ratio_min", { ascending: true })
+      .order("rake_min", { ascending: true });
 
-    if (rulesData) setRules(rulesData);
+    // Initialize table data with defaults
+    const data: TableData = {};
+    RATIOS.forEach(ratio => {
+      data[ratio.toString()] = {};
+      RAKE_RANGES.forEach(range => {
+        data[ratio.toString()][range.id] = getDefaultPercentage(ratio, range.id);
+      });
+    });
 
+    // Override with existing rules
+    if (rulesData && rulesData.length > 0) {
+      rulesData.forEach(rule => {
+        const ratioKey = parseFloat(rule.ratio_min).toFixed(1);
+        const rakeRangeId = getRakeRangeId(parseFloat(rule.rake_min));
+        if (data[ratioKey]) {
+          data[ratioKey][rakeRangeId] = parseFloat(rule.diamond_percentage);
+        }
+      });
+    }
+
+    setTableData(data);
     setLoading(false);
   };
 
-  const handleSaveTemplate = async () => {
+  const handleCellChange = (ratio: number, rakeRangeId: string, value: string) => {
+    const numValue = parseFloat(value) || 0;
+    setTableData(prev => ({
+      ...prev,
+      [ratio.toString()]: {
+        ...prev[ratio.toString()],
+        [rakeRangeId]: Math.min(100, Math.max(0, numValue)),
+      },
+    }));
+  };
+
+  const handleSave = async () => {
     if (!formData.name.trim()) {
       toast.error("El nombre es obligatorio");
       return;
@@ -85,7 +140,8 @@ export default function ClubConditionDetailPage() {
 
     setSaving(true);
     try {
-      const { error } = await supabase
+      // Update template info
+      const { error: templateError } = await supabase
         .from("diamond_club_agreement_templates")
         .update({
           name: formData.name,
@@ -93,7 +149,38 @@ export default function ClubConditionDetailPage() {
         })
         .eq("id", templateId);
 
-      if (error) throw error;
+      if (templateError) throw templateError;
+
+      // Delete existing rules
+      await supabase
+        .from("diamond_club_agreement_rules")
+        .delete()
+        .eq("template_id", templateId);
+
+      // Create new rules from table data
+      const newRules: any[] = [];
+
+      RATIOS.forEach(ratio => {
+        RAKE_RANGES.forEach(range => {
+          newRules.push({
+            template_id: templateId,
+            ratio_min: ratio,
+            ratio_max: ratio === 1.0 ? null : Math.round((ratio + 0.1) * 10) / 10,
+            rake_min: range.min,
+            rake_max: range.max,
+            diamond_percentage: tableData[ratio.toString()]?.[range.id] || 50,
+            hands_min: 0,
+            hands_max: null,
+            priority: 1,
+          });
+        });
+      });
+
+      const { error: rulesError } = await supabase
+        .from("diamond_club_agreement_rules")
+        .insert(newRules);
+
+      if (rulesError) throw rulesError;
 
       toast.success("Template actualizado correctamente");
       loadTemplateData();
@@ -102,62 +189,6 @@ export default function ClubConditionDetailPage() {
       toast.error(error.message || "Error al actualizar el template");
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleAddRule = async () => {
-    if (!newRule.ratio_min || !newRule.diamond_percentage) {
-      toast.error("Ratio mínimo y porcentaje Diamond son obligatorios");
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from("diamond_club_agreement_rules")
-        .insert({
-          template_id: templateId,
-          ratio_min: parseFloat(newRule.ratio_min),
-          ratio_max: newRule.ratio_max ? parseFloat(newRule.ratio_max) : null,
-          hands_min: newRule.hands_min ? parseInt(newRule.hands_min) : 0,
-          hands_max: newRule.hands_max ? parseInt(newRule.hands_max) : null,
-          diamond_percentage: parseFloat(newRule.diamond_percentage),
-          priority: parseInt(newRule.priority),
-        });
-
-      if (error) throw error;
-
-      toast.success("Regla añadida correctamente");
-      setNewRule({
-        ratio_min: "",
-        ratio_max: "",
-        hands_min: "",
-        hands_max: "",
-        diamond_percentage: "",
-        priority: "1",
-      });
-      loadTemplateData();
-    } catch (error: any) {
-      console.error("Error adding rule:", error);
-      toast.error(error.message || "Error al añadir la regla");
-    }
-  };
-
-  const handleDeleteRule = async (ruleId: string) => {
-    if (!confirm("¿Estás seguro de eliminar esta regla?")) return;
-
-    try {
-      const { error } = await supabase
-        .from("diamond_club_agreement_rules")
-        .delete()
-        .eq("id", ruleId);
-
-      if (error) throw error;
-
-      toast.success("Regla eliminada correctamente");
-      loadTemplateData();
-    } catch (error: any) {
-      console.error("Error deleting rule:", error);
-      toast.error(error.message || "Error al eliminar la regla");
     }
   };
 
@@ -175,15 +206,15 @@ export default function ClubConditionDetailPage() {
 
   return (
     <div className="p-8">
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <Link href="/admin/conditions/club">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
-          <div className="flex-1">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/admin/conditions/club">
+              <Button variant="ghost" size="icon">
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+            </Link>
             <div className="flex items-center gap-3">
               <Building2 className="w-8 h-8 text-slate-600" />
               <div>
@@ -194,9 +225,15 @@ export default function ClubConditionDetailPage() {
               </div>
             </div>
           </div>
-          <Badge variant={template.is_active ? "success" : "secondary"} className="text-sm px-3 py-1">
-            {template.is_active ? "Activo" : "Inactivo"}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant={template.is_active ? "success" : "secondary"} className="text-sm px-3 py-1">
+              {template.is_active ? "Activo" : "Inactivo"}
+            </Badge>
+            <Button onClick={handleSave} disabled={saving}>
+              <Save className="w-4 h-4 mr-2" />
+              {saving ? "Guardando..." : "Guardar Todo"}
+            </Button>
+          </div>
         </div>
 
         {/* Información del Template */}
@@ -208,176 +245,78 @@ export default function ClubConditionDetailPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Nombre *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Ej: Rakeback Progresivo"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Descripción (opcional)</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Ej: Condiciones que aumentan con mejor rendimiento"
-                rows={3}
-              />
-            </div>
-
-            <div className="flex justify-end">
-              <Button onClick={handleSaveTemplate} disabled={saving}>
-                <Save className="w-4 h-4 mr-2" />
-                {saving ? "Guardando..." : "Guardar Cambios"}
-              </Button>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Nombre *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Ej: Rakeback Progresivo"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="description">Descripción (opcional)</Label>
+                <Input
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Ej: Condiciones estándar para clubs"
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Reglas */}
+        {/* Excel-like Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Reglas ({rules.length})</CardTitle>
+            <CardTitle>Tabla de Porcentajes Diamond → Club</CardTitle>
             <CardDescription>
-              Define los porcentajes que cobra Diamond según el ratio y manos del club
+              Edita directamente los porcentajes. Ratio = PNL / Rake
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Lista de reglas existentes */}
-            {rules.length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b-2 border-slate-300">
-                      <th className="text-left py-3 px-4 font-semibold">Prioridad</th>
-                      <th className="text-left py-3 px-4 font-semibold">Ratio</th>
-                      <th className="text-left py-3 px-4 font-semibold">Manos</th>
-                      <th className="text-right py-3 px-4 font-semibold">% Diamond</th>
-                      <th className="text-right py-3 px-4 font-semibold"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rules.map((rule) => (
-                      <tr key={rule.id} className="border-b border-slate-200">
-                        <td className="py-3 px-4">
-                          <Badge variant="outline">{rule.priority}</Badge>
-                        </td>
-                        <td className="py-3 px-4">
-                          {rule.ratio_min} {rule.ratio_max ? `- ${rule.ratio_max}` : "+"}
-                        </td>
-                        <td className="py-3 px-4">
-                          {rule.hands_min} {rule.hands_max ? `- ${rule.hands_max}` : "+"}
-                        </td>
-                        <td className="py-3 px-4 text-right font-bold text-slate-900">
-                          {rule.diamond_percentage}%
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteRule(rule.id)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </td>
-                      </tr>
+          <CardContent>
+            <div className="overflow-x-auto border rounded-lg">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-100">
+                  <tr>
+                    <th className="py-3 px-4 text-left font-semibold border-r border-slate-200 bg-slate-200 sticky left-0 z-10">
+                      Ratio
+                    </th>
+                    {RAKE_RANGES.map(range => (
+                      <th key={range.id} className="py-3 px-4 text-center font-semibold min-w-[140px]">
+                        {range.label}
+                      </th>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Formulario para añadir nueva regla */}
-            <div className="border-t pt-4 space-y-4">
-              <h3 className="font-semibold text-slate-900">Añadir Nueva Regla</h3>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="ratio_min">Ratio Mínimo *</Label>
-                  <Input
-                    id="ratio_min"
-                    type="number"
-                    step="0.01"
-                    value={newRule.ratio_min}
-                    onChange={(e) => setNewRule({ ...newRule, ratio_min: e.target.value })}
-                    placeholder="Ej: -5.00"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ratio_max">Ratio Máximo (opcional)</Label>
-                  <Input
-                    id="ratio_max"
-                    type="number"
-                    step="0.01"
-                    value={newRule.ratio_max}
-                    onChange={(e) => setNewRule({ ...newRule, ratio_max: e.target.value })}
-                    placeholder="Ej: 0.00 (dejar vacío para sin límite)"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="hands_min">Manos Mínimas</Label>
-                  <Input
-                    id="hands_min"
-                    type="number"
-                    value={newRule.hands_min}
-                    onChange={(e) => setNewRule({ ...newRule, hands_min: e.target.value })}
-                    placeholder="Ej: 0"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="hands_max">Manos Máximas (opcional)</Label>
-                  <Input
-                    id="hands_max"
-                    type="number"
-                    value={newRule.hands_max}
-                    onChange={(e) => setNewRule({ ...newRule, hands_max: e.target.value })}
-                    placeholder="Dejar vacío para sin límite"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="diamond_percentage">% Diamond *</Label>
-                  <Input
-                    id="diamond_percentage"
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={newRule.diamond_percentage}
-                    onChange={(e) => setNewRule({ ...newRule, diamond_percentage: e.target.value })}
-                    placeholder="Ej: 55"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="priority">Prioridad</Label>
-                  <Input
-                    id="priority"
-                    type="number"
-                    value={newRule.priority}
-                    onChange={(e) => setNewRule({ ...newRule, priority: e.target.value })}
-                    placeholder="Ej: 1"
-                  />
-                  <p className="text-xs text-slate-500">
-                    Menor número = mayor prioridad
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button onClick={handleAddRule}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Añadir Regla
-                </Button>
-              </div>
+                  </tr>
+                </thead>
+                <tbody>
+                  {RATIOS.map((ratio, idx) => (
+                    <tr
+                      key={ratio}
+                      className={`border-t border-slate-200 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}
+                    >
+                      <td className="py-2 px-4 font-medium border-r border-slate-200 bg-slate-100 sticky left-0 z-10">
+                        {ratio.toFixed(1)}
+                      </td>
+                      {RAKE_RANGES.map(range => (
+                        <td key={range.id} className="py-1 px-2 text-center">
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.5"
+                            value={tableData[ratio.toString()]?.[range.id] || 0}
+                            onChange={(e) => handleCellChange(ratio, range.id, e.target.value)}
+                            className="w-20 mx-auto text-center h-8 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </CardContent>
         </Card>

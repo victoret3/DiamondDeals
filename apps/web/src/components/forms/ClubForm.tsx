@@ -104,14 +104,14 @@ export default function ClubForm({ initialData, onSave, isEditing = false }: Clu
 
       // Subir archivo a Supabase Storage
       const { error: uploadError } = await supabase.storage
-        .from('public')
+        .from('assets')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
       // Obtener URL pública
       const { data: { publicUrl } } = supabase.storage
-        .from('public')
+        .from('assets')
         .getPublicUrl(filePath);
 
       setFormData({ ...formData, logoUrl: publicUrl });
