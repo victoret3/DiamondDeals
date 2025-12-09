@@ -1,13 +1,11 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import {
-  Database,
-  ConditionTemplateInsert,
-  ConditionRuleInsert,
-  PlayerConditionInsert,
-} from "../types";
+
+// Using any for flexibility until types are regenerated from Supabase
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnySupabaseClient = SupabaseClient<any>;
 
 // Condition Templates
-export async function getConditionTemplates(client: SupabaseClient<Database>) {
+export async function getConditionTemplates(client: AnySupabaseClient) {
   return client
     .from("condition_templates")
     .select("*")
@@ -16,7 +14,7 @@ export async function getConditionTemplates(client: SupabaseClient<Database>) {
 }
 
 export async function getConditionTemplateById(
-  client: SupabaseClient<Database>,
+  client: AnySupabaseClient,
   id: string
 ) {
   return client
@@ -27,8 +25,8 @@ export async function getConditionTemplateById(
 }
 
 export async function createConditionTemplate(
-  client: SupabaseClient<Database>,
-  template: ConditionTemplateInsert
+  client: AnySupabaseClient,
+  template: Record<string, unknown>
 ) {
   return client
     .from("condition_templates")
@@ -39,7 +37,7 @@ export async function createConditionTemplate(
 
 // Condition Rules
 export async function getConditionRules(
-  client: SupabaseClient<Database>,
+  client: AnySupabaseClient,
   templateId: string
 ) {
   return client
@@ -50,15 +48,15 @@ export async function getConditionRules(
 }
 
 export async function createConditionRule(
-  client: SupabaseClient<Database>,
-  rule: ConditionRuleInsert
+  client: AnySupabaseClient,
+  rule: Record<string, unknown>
 ) {
   return client.from("condition_rules").insert(rule).select().single();
 }
 
 // Player Conditions
 export async function getPlayerConditions(
-  client: SupabaseClient<Database>,
+  client: AnySupabaseClient,
   playerClubId: string
 ) {
   return client
@@ -70,15 +68,15 @@ export async function getPlayerConditions(
 }
 
 export async function createPlayerCondition(
-  client: SupabaseClient<Database>,
-  condition: PlayerConditionInsert
+  client: AnySupabaseClient,
+  condition: Record<string, unknown>
 ) {
   return client.from("player_conditions").insert(condition).select().single();
 }
 
 // Find matching rakeback percentage based on stats
 export async function findMatchingRakeback(
-  client: SupabaseClient<Database>,
+  client: AnySupabaseClient,
   templateId: string,
   ratio: number,
   handsPlayed: number
@@ -88,7 +86,8 @@ export async function findMatchingRakeback(
   if (!rules || rules.length === 0) return null;
 
   // Find matching rule
-  const matchingRule = rules.find((rule) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const matchingRule = rules.find((rule: any) => {
     const ratioMatches =
       ratio >= rule.ratio_min &&
       (rule.ratio_max === null || ratio < rule.ratio_max);
