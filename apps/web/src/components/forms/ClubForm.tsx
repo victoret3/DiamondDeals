@@ -147,6 +147,7 @@ export default function ClubForm({ initialData, onSave, isEditing = false }: Clu
         code: formData.code,
         logo_url: formData.logoUrl || null,
         action_percentage: parseFloat(formData.actionPercentage),
+        base_rakeback_percentage: parseFloat(formData.diamondClubFixedPercentage) || 0,
         is_active: true,
         diamond_club_agreement_type: formData.diamondClubAgreementType,
       };
