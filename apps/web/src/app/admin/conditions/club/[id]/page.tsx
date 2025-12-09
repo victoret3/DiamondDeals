@@ -169,9 +169,6 @@ export default function ClubConditionDetailPage() {
             rake_min: range.min,
             rake_max: range.max,
             diamond_percentage: tableData[ratio.toString()]?.[range.id] || 50,
-            hands_min: 0,
-            hands_max: null,
-            priority: 1,
           });
         });
       });
