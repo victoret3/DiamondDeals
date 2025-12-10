@@ -1,171 +1,196 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { TrendingUp, Users, DollarSign, Activity } from "lucide-react";
+import { Users, DollarSign, Calendar } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 
-export default function PlayerDashboard() {
-  // TODO: Fetch real data from Supabase based on logged user
+export default async function PlayerDashboard() {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  // Obtener perfil del jugador
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single();
+
+  // Obtener el player asociado al usuario
+  const { data: player } = await supabase
+    .from("players")
+    .select(`
+      *,
+      club:clubs(id, name, code, logo_url, base_rakeback_percentage)
+    `)
+    .eq("user_id", user.id)
+    .single();
+
+  // Si no hay player asociado, mostrar mensaje
+  if (!player) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-8">
+        <div className="max-w-4xl mx-auto">
+          <Card>
+            <CardHeader>
+              <CardTitle>Bienvenido</CardTitle>
+              <CardDescription>Tu cuenta aún no está vinculada a un perfil de jugador</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-slate-600">
+                Contacta con tu agente o administrador para que vincule tu cuenta a tu perfil de jugador.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Obtener reportes semanales del jugador
+  const { data: weeklyReports } = await supabase
+    .from("weekly_player_reports")
+    .select("*")
+    .eq("player_id", player.id)
+    .order("week_start", { ascending: false })
+    .limit(10);
+
+  // Calcular totales
+  const totalRakeback = weeklyReports?.reduce((sum, r) => sum + (r.player_rakeback || 0), 0) || 0;
+  const totalResult = weeklyReports?.reduce((sum, r) => sum + (r.result || 0), 0) || 0;
+  const totalRake = weeklyReports?.reduce((sum, r) => sum + (r.rake || 0), 0) || 0;
 
   return (
     <div className="min-h-screen bg-slate-50 p-8">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">Mi Dashboard</h1>
-            <p className="text-slate-600 mt-1">Bienvenido de vuelta</p>
-          </div>
-          <Button>Ver Estadísticas Completas</Button>
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Mi Dashboard</h1>
+          <p className="text-slate-600 mt-1">Bienvenido, {profile?.full_name || player.nickname}</p>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-slate-600">
-                Clubs Activos
+                Club Actual
               </CardTitle>
               <Users className="w-4 h-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">3</div>
-              <p className="text-xs text-slate-500 mt-1">GGPoker, PokerStars, 888</p>
+              <div className="text-2xl font-bold">{player.club?.name || "-"}</div>
+              <p className="text-xs text-slate-500 mt-1">
+                Rakeback base: {player.club?.base_rakeback_percentage || 0}%
+              </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-slate-600">
-                Manos Jugadas (mes)
+                Resultado Total
               </CardTitle>
-              <Activity className="w-4 h-4 text-green-600" />
+              <DollarSign className="w-4 h-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">8,450</div>
-              <p className="text-xs text-slate-500 mt-1">+12% vs mes anterior</p>
+              <div className={`text-2xl font-bold ${totalResult >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {totalResult >= 0 ? "+" : ""}{totalResult.toFixed(2)}€
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Rake generado: {totalRake.toFixed(2)}€</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-slate-600">
-                Rakeback Total
+                Rakeback Acumulado
               </CardTitle>
               <DollarSign className="w-4 h-4 text-yellow-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">€1,240</div>
-              <p className="text-xs text-slate-500 mt-1">Este mes</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-slate-600">
-                Ratio Actual
-              </CardTitle>
-              <TrendingUp className="w-4 h-4 text-purple-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">0.35</div>
-              <p className="text-xs text-slate-500 mt-1">Resultado/Rake</p>
+              <div className="text-2xl font-bold text-yellow-600">{totalRakeback.toFixed(2)}€</div>
+              <p className="text-xs text-slate-500 mt-1">Total histórico</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Clubs Section */}
+        {/* Mi Club */}
         <Card>
           <CardHeader>
-            <CardTitle>Mis Clubs</CardTitle>
-            <CardDescription>Clubs donde juegas actualmente</CardDescription>
+            <CardTitle>Mi Club</CardTitle>
+            <CardDescription>Información de tu club actual</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {[
-                { name: "GGPoker", rakeback: "60%", condition: "Dinámica - 15%", status: "active" },
-                { name: "PokerStars", rakeback: "55%", condition: "Fija - 20%", status: "active" },
-                { name: "888poker", rakeback: "50%", condition: "Dinámica - 10%", status: "active" },
-              ].map((club) => (
-                <div
-                  key={club.name}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-slate-900">{club.name}</h3>
-                    <p className="text-sm text-slate-600 mt-1">
-                      Club Rakeback: {club.rakeback} | Diamont: {club.condition}
+            {player.club ? (
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center gap-4">
+                  {player.club.logo_url && (
+                    <img
+                      src={player.club.logo_url}
+                      alt={player.club.name}
+                      className="w-12 h-12 object-contain rounded"
+                    />
+                  )}
+                  <div>
+                    <h3 className="font-semibold text-slate-900">{player.club.name}</h3>
+                    <p className="text-sm text-slate-600">
+                      Código: {player.club.code}
                     </p>
                   </div>
-                  <Badge variant="success">Activo</Badge>
                 </div>
-              ))}
-            </div>
+                <Badge variant="success">Activo</Badge>
+              </div>
+            ) : (
+              <p className="text-slate-500">No estás asignado a ningún club</p>
+            )}
           </CardContent>
         </Card>
 
-        {/* Recent Activity */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Últimas Sesiones</CardTitle>
-              <CardDescription>Tus sesiones más recientes</CardDescription>
-            </CardHeader>
-            <CardContent>
+        {/* Historial de Semanas */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Historial Semanal</CardTitle>
+            <CardDescription>Tus últimas semanas de juego</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {weeklyReports && weeklyReports.length > 0 ? (
               <div className="space-y-3">
-                {[
-                  { date: "23 Oct 2024", hands: 450, result: "+€120", club: "GGPoker" },
-                  { date: "22 Oct 2024", hands: 380, result: "-€45", club: "PokerStars" },
-                  { date: "21 Oct 2024", hands: 520, result: "+€280", club: "GGPoker" },
-                ].map((session, idx) => (
+                {weeklyReports.map((report) => (
                   <div
-                    key={idx}
-                    className="flex items-center justify-between py-2 border-b last:border-0"
+                    key={report.id}
+                    className="flex items-center justify-between py-3 px-4 border rounded-lg"
                   >
-                    <div>
-                      <p className="font-medium text-slate-900">{session.club}</p>
-                      <p className="text-sm text-slate-500">{session.date} • {session.hands} manos</p>
+                    <div className="flex items-center gap-3">
+                      <Calendar className="w-4 h-4 text-slate-400" />
+                      <div>
+                        <p className="font-medium text-slate-900">
+                          Semana del {new Date(report.week_start).toLocaleDateString("es-ES")}
+                        </p>
+                        <p className="text-sm text-slate-500">
+                          Rake: {report.rake?.toFixed(2) || 0}€
+                        </p>
+                      </div>
                     </div>
-                    <span
-                      className={`font-semibold ${
-                        session.result.startsWith("+") ? "text-green-600" : "text-red-600"
-                      }`}
-                    >
-                      {session.result}
-                    </span>
+                    <div className="text-right">
+                      <p className={`font-semibold ${(report.result || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {(report.result || 0) >= 0 ? "+" : ""}{(report.result || 0).toFixed(2)}€
+                      </p>
+                      <p className="text-sm text-yellow-600">
+                        Rakeback: {(report.player_rakeback || 0).toFixed(2)}€
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Próximos Pagos</CardTitle>
-              <CardDescription>Rakeback pendiente de pago</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-blue-900">Octubre 2024</span>
-                    <Badge variant="warning">Pendiente</Badge>
-                  </div>
-                  <div className="text-2xl font-bold text-blue-900">€1,240.50</div>
-                  <p className="text-xs text-blue-700 mt-1">Pago estimado: 5 Nov 2024</p>
-                </div>
-
-                <div className="p-4 bg-green-50 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-green-900">Septiembre 2024</span>
-                    <Badge variant="success">Pagado</Badge>
-                  </div>
-                  <div className="text-2xl font-bold text-green-900">€980.00</div>
-                  <p className="text-xs text-green-700 mt-1">Pagado: 5 Oct 2024</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            ) : (
+              <p className="text-slate-500 text-center py-8">
+                No hay reportes semanales todavía
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

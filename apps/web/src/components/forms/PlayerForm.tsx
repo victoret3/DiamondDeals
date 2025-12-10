@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { Save } from "lucide-react";
+import { Save, UserCheck } from "lucide-react";
 import Link from "next/link";
 
 interface PlayerFormProps {
@@ -22,11 +22,13 @@ export default function PlayerForm({ onSave }: PlayerFormProps) {
   const [loadingClubs, setLoadingClubs] = useState(false);
   const [clubs, setClubs] = useState<any[]>([]);
   const [conditions, setConditions] = useState<any[]>([]);
+  const [agents, setAgents] = useState<any[]>([]);
 
   const [formData, setFormData] = useState({
     isAgent: false,
     selectedClubs: [] as string[],
     clubConditions: {} as Record<string, { type: string; templateId?: string; fixedPercentage?: number }>,
+    referredByAgentId: null as string | null,
   });
 
   useEffect(() => {
@@ -53,6 +55,16 @@ export default function PlayerForm({ onSave }: PlayerFormProps) {
       .order("name");
 
     if (templatesData) setConditions(templatesData);
+
+    // Cargar agentes disponibles
+    const { data: agentsData } = await supabase
+      .from("players")
+      .select("id, full_name, nickname, player_code")
+      .eq("is_agent", true)
+      .eq("status", "active")
+      .order("full_name");
+
+    if (agentsData) setAgents(agentsData);
 
     setLoadingClubs(false);
   };
@@ -132,6 +144,43 @@ export default function PlayerForm({ onSave }: PlayerFormProps) {
               </p>
             </Label>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Agente Referidor */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <UserCheck className="w-5 h-5 text-orange-600" />
+            <CardTitle>Agente Referidor</CardTitle>
+          </div>
+          <CardDescription>
+            Selecciona el agente que refirió a este jugador (opcional)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {agents.length === 0 ? (
+            <p className="text-slate-500 text-sm">
+              No hay agentes disponibles. Primero crea un jugador con rol de agente.
+            </p>
+          ) : (
+            <Select
+              value={formData.referredByAgentId || "none"}
+              onValueChange={(value) => setFormData({ ...formData, referredByAgentId: value === "none" ? null : value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Sin agente" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sin agente</SelectItem>
+                {agents.map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    {agent.full_name} ({agent.nickname || agent.player_code})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </CardContent>
       </Card>
 

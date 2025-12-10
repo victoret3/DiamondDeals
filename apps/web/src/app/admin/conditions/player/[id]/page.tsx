@@ -6,13 +6,56 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/ui/loading";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Plus, Trash2, User } from "lucide-react";
+import { ArrowLeft, Save, User } from "lucide-react";
 import Link from "next/link";
+
+// Manos ranges definition
+const HANDS_RANGES = [
+  { id: "low", label: "0 a 2.5K", min: 0, max: 2500 },
+  { id: "mid", label: "2.5K a 7K", min: 2500, max: 7000 },
+  { id: "high", label: "7K+", min: 7000, max: null },
+];
+
+// Ratios ranges
+const RATIO_RANGES = [
+  { id: "r1", label: "-0.5 O MENOS", min: -999, max: -0.5 },
+  { id: "r2", label: "-0.5 A 0", min: -0.5, max: 0 },
+  { id: "r3", label: "0 A 0.25", min: 0, max: 0.25 },
+  { id: "r4", label: "0.25 A 0.5", min: 0.25, max: 0.5 },
+  { id: "r5", label: "0.5 A MAYOR", min: 0.5, max: 999 },
+];
+
+type TableData = Record<string, Record<string, number>>;
+
+function getHandsRangeId(handsMin: number): string {
+  if (handsMin >= 7000) return "high";
+  if (handsMin >= 2500) return "mid";
+  return "low";
+}
+
+function getRatioRangeId(ratioMin: number): string {
+  if (ratioMin <= -0.5 || ratioMin === -999) return "r1";
+  if (ratioMin >= -0.5 && ratioMin < 0) return "r2";
+  if (ratioMin >= 0 && ratioMin < 0.25) return "r3";
+  if (ratioMin >= 0.25 && ratioMin < 0.5) return "r4";
+  return "r5";
+}
+
+// Default values based on the screenshot pattern
+function getDefaultPercentage(ratioId: string, handsId: string): number {
+  const defaults: Record<string, Record<string, number>> = {
+    r1: { low: 40, mid: 45, high: 50 },
+    r2: { low: 35, mid: 40, high: 45 },
+    r3: { low: 30, mid: 35, high: 40 },
+    r4: { low: 25, mid: 30, high: 35 },
+    r5: { low: 20, mid: 25, high: 30 },
+  };
+  return defaults[ratioId]?.[handsId] ?? 30;
+}
 
 export default function PlayerConditionDetailPage() {
   const router = useRouter();
@@ -23,21 +66,13 @@ export default function PlayerConditionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [template, setTemplate] = useState<any>(null);
-  const [rules, setRules] = useState<any[]>([]);
 
   const [formData, setFormData] = useState({
     name: "",
     description: "",
   });
 
-  const [newRule, setNewRule] = useState({
-    ratio_min: "",
-    ratio_max: "",
-    hands_min: "",
-    hands_max: "",
-    player_percentage: "",
-    priority: "1",
-  });
+  const [tableData, setTableData] = useState<TableData>({});
 
   useEffect(() => {
     loadTemplateData();
@@ -70,14 +105,45 @@ export default function PlayerConditionDetailPage() {
       .from("diamond_player_agreement_rules")
       .select("*")
       .eq("template_id", templateId)
-      .order("priority");
+      .order("ratio_min", { ascending: true })
+      .order("hands_min", { ascending: true });
 
-    if (rulesData) setRules(rulesData);
+    // Initialize table data with defaults
+    const data: TableData = {};
+    RATIO_RANGES.forEach(ratio => {
+      data[ratio.id] = {};
+      HANDS_RANGES.forEach(hands => {
+        data[ratio.id][hands.id] = getDefaultPercentage(ratio.id, hands.id);
+      });
+    });
 
+    // Override with existing rules
+    if (rulesData && rulesData.length > 0) {
+      rulesData.forEach(rule => {
+        const ratioId = getRatioRangeId(parseFloat(rule.ratio_min));
+        const handsId = getHandsRangeId(parseInt(rule.hands_min));
+        if (data[ratioId]) {
+          data[ratioId][handsId] = parseFloat(rule.player_percentage);
+        }
+      });
+    }
+
+    setTableData(data);
     setLoading(false);
   };
 
-  const handleSaveTemplate = async () => {
+  const handleCellChange = (ratioId: string, handsId: string, value: string) => {
+    const numValue = parseFloat(value) || 0;
+    setTableData(prev => ({
+      ...prev,
+      [ratioId]: {
+        ...prev[ratioId],
+        [handsId]: Math.min(100, Math.max(0, numValue)),
+      },
+    }));
+  };
+
+  const handleSave = async () => {
     if (!formData.name.trim()) {
       toast.error("El nombre es obligatorio");
       return;
@@ -85,7 +151,8 @@ export default function PlayerConditionDetailPage() {
 
     setSaving(true);
     try {
-      const { error } = await supabase
+      // Update template info
+      const { error: templateError } = await supabase
         .from("diamond_player_agreement_templates")
         .update({
           name: formData.name,
@@ -93,7 +160,37 @@ export default function PlayerConditionDetailPage() {
         })
         .eq("id", templateId);
 
-      if (error) throw error;
+      if (templateError) throw templateError;
+
+      // Delete existing rules
+      await supabase
+        .from("diamond_player_agreement_rules")
+        .delete()
+        .eq("template_id", templateId);
+
+      // Create new rules from table data
+      const newRules: any[] = [];
+      let priority = 1;
+
+      RATIO_RANGES.forEach(ratio => {
+        HANDS_RANGES.forEach(hands => {
+          newRules.push({
+            template_id: templateId,
+            ratio_min: ratio.min,
+            ratio_max: ratio.max === 999 ? null : ratio.max,
+            hands_min: hands.min,
+            hands_max: hands.max,
+            player_percentage: tableData[ratio.id]?.[hands.id] || 30,
+            priority: priority++,
+          });
+        });
+      });
+
+      const { error: rulesError } = await supabase
+        .from("diamond_player_agreement_rules")
+        .insert(newRules);
+
+      if (rulesError) throw rulesError;
 
       toast.success("Template actualizado correctamente");
       loadTemplateData();
@@ -102,62 +199,6 @@ export default function PlayerConditionDetailPage() {
       toast.error(error.message || "Error al actualizar el template");
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleAddRule = async () => {
-    if (!newRule.ratio_min || !newRule.player_percentage) {
-      toast.error("Ratio mínimo y porcentaje jugador son obligatorios");
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from("diamond_player_agreement_rules")
-        .insert({
-          template_id: templateId,
-          ratio_min: parseFloat(newRule.ratio_min),
-          ratio_max: newRule.ratio_max ? parseFloat(newRule.ratio_max) : null,
-          hands_min: newRule.hands_min ? parseInt(newRule.hands_min) : 0,
-          hands_max: newRule.hands_max ? parseInt(newRule.hands_max) : null,
-          player_percentage: parseFloat(newRule.player_percentage),
-          priority: parseInt(newRule.priority),
-        });
-
-      if (error) throw error;
-
-      toast.success("Regla añadida correctamente");
-      setNewRule({
-        ratio_min: "",
-        ratio_max: "",
-        hands_min: "",
-        hands_max: "",
-        player_percentage: "",
-        priority: "1",
-      });
-      loadTemplateData();
-    } catch (error: any) {
-      console.error("Error adding rule:", error);
-      toast.error(error.message || "Error al añadir la regla");
-    }
-  };
-
-  const handleDeleteRule = async (ruleId: string) => {
-    if (!confirm("¿Estás seguro de eliminar esta regla?")) return;
-
-    try {
-      const { error } = await supabase
-        .from("diamond_player_agreement_rules")
-        .delete()
-        .eq("id", ruleId);
-
-      if (error) throw error;
-
-      toast.success("Regla eliminada correctamente");
-      loadTemplateData();
-    } catch (error: any) {
-      console.error("Error deleting rule:", error);
-      toast.error(error.message || "Error al eliminar la regla");
     }
   };
 
@@ -175,15 +216,15 @@ export default function PlayerConditionDetailPage() {
 
   return (
     <div className="p-8">
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <Link href="/admin/conditions/player">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
-          <div className="flex-1">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/admin/conditions/player">
+              <Button variant="ghost" size="icon">
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+            </Link>
             <div className="flex items-center gap-3">
               <User className="w-8 h-8 text-slate-600" />
               <div>
@@ -194,9 +235,15 @@ export default function PlayerConditionDetailPage() {
               </div>
             </div>
           </div>
-          <Badge variant={template.is_active ? "success" : "secondary"} className="text-sm px-3 py-1">
-            {template.is_active ? "Activo" : "Inactivo"}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant={template.is_active ? "success" : "secondary"} className="text-sm px-3 py-1">
+              {template.is_active ? "Activo" : "Inactivo"}
+            </Badge>
+            <Button onClick={handleSave} disabled={saving}>
+              <Save className="w-4 h-4 mr-2" />
+              {saving ? "Guardando..." : "Guardar Todo"}
+            </Button>
+          </div>
         </div>
 
         {/* Información del Template */}
@@ -208,177 +255,87 @@ export default function PlayerConditionDetailPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Nombre *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Ej: Rakeback Progresivo"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Descripción (opcional)</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Ej: Condiciones que aumentan con mejor rendimiento"
-                rows={3}
-              />
-            </div>
-
-            <div className="flex justify-end">
-              <Button onClick={handleSaveTemplate} disabled={saving}>
-                <Save className="w-4 h-4 mr-2" />
-                {saving ? "Guardando..." : "Guardar Cambios"}
-              </Button>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Nombre *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Ej: Rakeback Progresivo"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="description">Descripción (opcional)</Label>
+                <Input
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Ej: Condiciones estándar para jugadores"
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Reglas */}
+        {/* Excel-like Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Reglas ({rules.length})</CardTitle>
+            <CardTitle>Tabla de Porcentajes</CardTitle>
             <CardDescription>
-              Define los porcentajes que recibe el jugador según su ratio y manos
+              Edita directamente los porcentajes de rakeback. Ratio = Resultado / Rake
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Lista de reglas existentes */}
-            {rules.length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b-2 border-slate-300">
-                      <th className="text-left py-3 px-4 font-semibold">Prioridad</th>
-                      <th className="text-left py-3 px-4 font-semibold">Ratio</th>
-                      <th className="text-left py-3 px-4 font-semibold">Manos</th>
-                      <th className="text-right py-3 px-4 font-semibold">% Jugador</th>
-                      <th className="text-right py-3 px-4 font-semibold"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rules.map((rule) => (
-                      <tr key={rule.id} className="border-b border-slate-200">
-                        <td className="py-3 px-4">
-                          <Badge variant="outline">{rule.priority}</Badge>
-                        </td>
-                        <td className="py-3 px-4">
-                          {rule.ratio_min} {rule.ratio_max ? `- ${rule.ratio_max}` : "+"}
-                        </td>
-                        <td className="py-3 px-4">
-                          {rule.hands_min} {rule.hands_max ? `- ${rule.hands_max}` : "+"}
-                        </td>
-                        <td className="py-3 px-4 text-right font-bold text-slate-900">
-                          {rule.player_percentage}%
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteRule(rule.id)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </td>
-                      </tr>
+          <CardContent>
+            <div className="overflow-x-auto border rounded-lg">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-amber-200">
+                    <th rowSpan={2} className="py-3 px-4 text-left font-semibold border-r border-amber-300 bg-amber-300">
+                      RATIO
+                    </th>
+                    <th colSpan={HANDS_RANGES.length} className="py-2 px-4 text-center font-semibold border-b border-amber-300">
+                      MANOS
+                    </th>
+                  </tr>
+                  <tr className="bg-amber-100">
+                    {HANDS_RANGES.map(hands => (
+                      <th key={hands.id} className="py-2 px-4 text-center font-medium min-w-[100px] border-r border-amber-200 last:border-r-0">
+                        {hands.label}
+                      </th>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Formulario para añadir nueva regla */}
-            <div className="border-t pt-4 space-y-4">
-              <h3 className="font-semibold text-slate-900">Añadir Nueva Regla</h3>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="ratio_min">Ratio Mínimo *</Label>
-                  <Input
-                    id="ratio_min"
-                    type="number"
-                    step="0.01"
-                    value={newRule.ratio_min}
-                    onChange={(e) => setNewRule({ ...newRule, ratio_min: e.target.value })}
-                    placeholder="Ej: -5.00"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ratio_max">Ratio Máximo (opcional)</Label>
-                  <Input
-                    id="ratio_max"
-                    type="number"
-                    step="0.01"
-                    value={newRule.ratio_max}
-                    onChange={(e) => setNewRule({ ...newRule, ratio_max: e.target.value })}
-                    placeholder="Ej: 0.00 (dejar vacío para sin límite)"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="hands_min">Manos Mínimas</Label>
-                  <Input
-                    id="hands_min"
-                    type="number"
-                    value={newRule.hands_min}
-                    onChange={(e) => setNewRule({ ...newRule, hands_min: e.target.value })}
-                    placeholder="Ej: 0"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="hands_max">Manos Máximas (opcional)</Label>
-                  <Input
-                    id="hands_max"
-                    type="number"
-                    value={newRule.hands_max}
-                    onChange={(e) => setNewRule({ ...newRule, hands_max: e.target.value })}
-                    placeholder="Dejar vacío para sin límite"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="player_percentage">% Jugador *</Label>
-                  <Input
-                    id="player_percentage"
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={newRule.player_percentage}
-                    onChange={(e) => setNewRule({ ...newRule, player_percentage: e.target.value })}
-                    placeholder="Ej: 30"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="priority">Prioridad</Label>
-                  <Input
-                    id="priority"
-                    type="number"
-                    value={newRule.priority}
-                    onChange={(e) => setNewRule({ ...newRule, priority: e.target.value })}
-                    placeholder="Ej: 1"
-                  />
-                  <p className="text-xs text-slate-500">
-                    Menor número = mayor prioridad
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button onClick={handleAddRule}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Añadir Regla
-                </Button>
-              </div>
+                  </tr>
+                </thead>
+                <tbody>
+                  {RATIO_RANGES.map((ratio, idx) => (
+                    <tr
+                      key={ratio.id}
+                      className={`border-t border-amber-200 ${idx % 2 === 0 ? 'bg-amber-50' : 'bg-white'}`}
+                    >
+                      <td className="py-2 px-4 font-medium border-r border-amber-200 bg-amber-100 whitespace-nowrap">
+                        {ratio.label}
+                      </td>
+                      {HANDS_RANGES.map(hands => (
+                        <td key={hands.id} className="py-1 px-2 text-center border-r border-amber-100 last:border-r-0">
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={tableData[ratio.id]?.[hands.id] || 0}
+                            onChange={(e) => handleCellChange(ratio.id, hands.id, e.target.value)}
+                            className="w-16 mx-auto text-center h-8 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+            <p className="text-xs text-slate-500 mt-3">
+              Los valores representan el % de rakeback que recibe el jugador según su ratio y manos jugadas.
+            </p>
           </CardContent>
         </Card>
       </div>

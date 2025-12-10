@@ -42,11 +42,24 @@ export default function ReferralsPage() {
     const { data: referralsData } = await supabase
       .from("players")
       .select(`
-        *,
+        id,
+        full_name,
+        nickname,
+        player_code,
+        status,
+        agent_commission_percentage,
         player_clubs (
           id,
-          agent_commission_percentage,
           club:clubs (
+            id,
+            name,
+            code
+          )
+        ),
+        player_applications (
+          id,
+          app_nickname,
+          application:applications (
             id,
             name,
             code
@@ -164,77 +177,67 @@ export default function ReferralsPage() {
                       <th className="text-left py-3 px-4 font-semibold">Jugador</th>
                       <th className="text-left py-3 px-4 font-semibold">Código</th>
                       <th className="text-center py-3 px-4 font-semibold">Estado</th>
+                      <th className="text-left py-3 px-4 font-semibold">Apps</th>
                       <th className="text-left py-3 px-4 font-semibold">Clubs</th>
-                      <th className="text-right py-3 px-4 font-semibold">Comisión</th>
+                      <th className="text-right py-3 px-4 font-semibold">Tu Comisión</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {referrals.map((referral) => {
-                      const clubsCount = referral.player_clubs?.length || 0;
-                      return referral.player_clubs && referral.player_clubs.length > 0 ? (
-                        referral.player_clubs.map((pc: any, idx: number) => (
-                          <tr key={`${referral.id}-${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
-                            {idx === 0 && (
-                              <>
-                                <td rowSpan={clubsCount} className="py-3 px-4 align-top">
-                                  <p className="font-medium text-slate-900">{referral.full_name}</p>
-                                  {referral.nickname && (
-                                    <p className="text-xs text-slate-500">@{referral.nickname}</p>
-                                  )}
-                                </td>
-                                <td rowSpan={clubsCount} className="py-3 px-4 align-top">
-                                  <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
-                                    {referral.player_code}
-                                  </code>
-                                </td>
-                                <td rowSpan={clubsCount} className="py-3 px-4 text-center align-top">
-                                  <Badge variant={referral.status === "active" ? "success" : "secondary"}>
-                                    {referral.status}
-                                  </Badge>
-                                </td>
-                              </>
-                            )}
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-2">
-                                <Building2 className="w-4 h-4 text-slate-500" />
-                                <span className="font-medium text-slate-900">{pc.club.name}</span>
-                              </div>
-                              <span className="text-xs text-slate-500">{pc.club.code}</span>
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              {pc.agent_commission_percentage > 0 ? (
-                                <span className="font-semibold text-green-600">
-                                  {pc.agent_commission_percentage}%
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">0%</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr key={referral.id} className="border-b border-slate-200 hover:bg-slate-50">
-                          <td className="py-3 px-4">
-                            <p className="font-medium text-slate-900">{referral.full_name}</p>
-                            {referral.nickname && (
-                              <p className="text-xs text-slate-500">@{referral.nickname}</p>
-                            )}
-                          </td>
-                          <td className="py-3 px-4">
-                            <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
-                              {referral.player_code}
-                            </code>
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <Badge variant={referral.status === "active" ? "success" : "secondary"}>
-                              {referral.status}
-                            </Badge>
-                          </td>
-                          <td className="py-3 px-4 text-slate-400 text-xs">Sin clubs</td>
-                          <td className="py-3 px-4 text-right text-slate-400">-</td>
-                        </tr>
-                      );
-                    })}
+                    {referrals.map((referral) => (
+                      <tr key={referral.id} className="border-b border-slate-200 hover:bg-slate-50">
+                        <td className="py-3 px-4">
+                          <p className="font-medium text-slate-900">{referral.full_name}</p>
+                          {referral.nickname && (
+                            <p className="text-xs text-slate-500">@{referral.nickname}</p>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
+                            {referral.player_code}
+                          </code>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <Badge variant={referral.status === "active" ? "success" : "secondary"}>
+                            {referral.status}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4">
+                          {referral.player_applications && referral.player_applications.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {referral.player_applications.map((pa: any) => (
+                                <Badge key={pa.id} variant="secondary" className="text-xs">
+                                  {pa.application.name}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-xs">-</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          {referral.player_clubs && referral.player_clubs.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {referral.player_clubs.map((pc: any) => (
+                                <Badge key={pc.id} variant="outline" className="text-xs">
+                                  {pc.club.name}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-xs">-</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {referral.agent_commission_percentage > 0 ? (
+                            <span className="font-semibold text-green-600">
+                              {referral.agent_commission_percentage}%
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">0%</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

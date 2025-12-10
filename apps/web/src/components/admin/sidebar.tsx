@@ -14,7 +14,8 @@ import {
   ChevronRight,
   Calendar,
   ListTree,
-  User
+  User,
+  Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +41,11 @@ const menuItems = [
     title: "Jugadores",
     href: "/admin/players",
     icon: Users,
+  },
+  {
+    title: "Aplicaciones",
+    href: "/admin/applications",
+    icon: Smartphone,
   },
   {
     title: "Clubs",
