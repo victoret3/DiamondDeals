@@ -29,6 +29,9 @@ export default function ClubDetailPage() {
     diamondClubAgreementType: "fixed" as "fixed" | "dynamic",
     diamondClubFixedPercentage: "",
     diamondClubTemplateId: "",
+    diamondPlayerAgreementType: "fixed" as "fixed" | "dynamic",
+    diamondPlayerFixedPercentage: "",
+    diamondPlayerTemplateId: "",
   });
 
   useEffect(() => {
@@ -43,7 +46,8 @@ export default function ClubDetailPage() {
       .from("clubs")
       .select(`
         *,
-        diamond_club_template:diamond_club_template_id(id, name)
+        diamond_club_template:diamond_club_template_id(id, name),
+        diamond_player_template:diamond_player_template_id(id, name)
       `)
       .eq("id", clubId)
       .single();
@@ -63,6 +67,9 @@ export default function ClubDetailPage() {
       diamondClubAgreementType: clubData.diamond_club_agreement_type || "fixed",
       diamondClubFixedPercentage: clubData.diamond_club_fixed_percentage?.toString() || "",
       diamondClubTemplateId: clubData.diamond_club_template_id || "",
+      diamondPlayerAgreementType: clubData.diamond_player_agreement_type || "fixed",
+      diamondPlayerFixedPercentage: clubData.diamond_player_fixed_percentage?.toString() || "",
+      diamondPlayerTemplateId: clubData.diamond_player_template_id || "",
     });
 
     // Cargar jugadores del club

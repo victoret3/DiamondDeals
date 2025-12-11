@@ -83,7 +83,6 @@ export default function ClubsPage() {
                       <th className="text-left py-3 px-4 font-semibold">Nombre</th>
                       <th className="text-left py-3 px-4 font-semibold">Código</th>
                       <th className="text-center py-3 px-4 font-semibold">Estado</th>
-                      <th className="text-right py-3 px-4 font-semibold">Rakeback</th>
                       <th className="text-right py-3 px-4 font-semibold">Action</th>
                       <th className="text-right py-3 px-4 font-semibold">Diamond → Club</th>
                       <th className="text-center py-3 px-4 font-semibold">Jugadores</th>
@@ -110,23 +109,22 @@ export default function ClubsPage() {
                           </Badge>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <span className="text-sm">
-                            {club.rakeback_type === "variable"
-                              ? <Badge variant="outline">Variable</Badge>
-                              : `${club.base_rakeback_percentage}%`}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-right">
                           <span className="font-bold text-slate-900">
-                            {club.action_percentage}%
+                            {club.action_percentage || 0}%
                           </span>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <span className="text-sm font-medium">
-                            {club.diamond_club_agreement_type === 'fixed'
-                              ? `${club.diamond_club_fixed_percentage}%`
-                              : club.diamond_club_template?.name || 'Sin configurar'}
-                          </span>
+                          {club.diamond_club_agreement_type === 'fixed' ? (
+                            <span className="text-sm font-medium">
+                              {club.diamond_club_fixed_percentage}%
+                            </span>
+                          ) : club.diamond_club_agreement_type === 'dynamic' ? (
+                            <Badge variant="outline">
+                              {club.diamond_club_template?.name || 'Dinámico'}
+                            </Badge>
+                          ) : (
+                            <span className="text-slate-400 text-sm">Sin configurar</span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span className="font-bold text-slate-900">

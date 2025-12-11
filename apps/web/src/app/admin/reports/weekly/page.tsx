@@ -40,8 +40,6 @@ export default function WeeklyReportsPage() {
     const today = new Date();
     const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
-    console.log('Today:', today, 'Day of week:', dayOfWeek);
-
     // Calculate days to subtract to get to last Monday (week starts on Monday)
     let daysToSubtract;
     if (dayOfWeek === 0) {
@@ -56,13 +54,9 @@ export default function WeeklyReportsPage() {
       daysToSubtract = (dayOfWeek - 1) + 7;
     }
 
-    console.log('Days to subtract:', daysToSubtract);
-
     const lastMonday = new Date(today);
     lastMonday.setDate(today.getDate() - daysToSubtract);
     lastMonday.setHours(0, 0, 0, 0);
-
-    console.log('Last Monday calculated:', lastMonday);
 
     return lastMonday;
   }
@@ -187,7 +181,12 @@ export default function WeeklyReportsPage() {
     setSaving(true);
     const report = reports[playerClubId];
 
-    if (!report || !report.pnl || !report.rake || !report.hands) {
+    console.log("=== SAVING REPORT ===");
+    console.log("Player Club ID:", playerClubId);
+    console.log("Report data:", report);
+
+    if (!report || !report.pnl || !report.rake) {
+      console.log("Missing required fields");
       setSaving(false);
       return;
     }
@@ -200,21 +199,32 @@ export default function WeeklyReportsPage() {
       week_end: formatDateISO(weekEnd),
       pnl: parseFloat(report.pnl),
       rake: parseFloat(report.rake),
-      hands: parseInt(report.hands),
+      hands: parseInt(report.hands) || 0,
     };
+
+    console.log("Report data to save:", reportData);
 
     // Si ya existe, actualizar; si no, insertar
     if (report.id) {
-      await supabase
+      const { error } = await supabase
         .from("weekly_player_reports")
         .update(reportData)
         .eq("id", report.id);
+
+      if (error) {
+        console.error("Update error:", error);
+      } else {
+        console.log("Update successful");
+      }
     } else {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("weekly_player_reports")
         .insert(reportData)
         .select()
         .single();
+
+      console.log("Insert result:", data);
+      console.log("Insert error:", error);
 
       if (data) {
         setReports(prev => ({
@@ -234,7 +244,7 @@ export default function WeeklyReportsPage() {
     for (const playerClubId of Object.keys(reports)) {
       const report = reports[playerClubId];
 
-      if (!report || !report.pnl || !report.rake || !report.hands) {
+      if (!report || !report.pnl || !report.rake) {
         continue;
       }
 
@@ -244,7 +254,7 @@ export default function WeeklyReportsPage() {
         week_end: formatDateISO(weekEnd),
         pnl: parseFloat(report.pnl),
         rake: parseFloat(report.rake),
-        hands: parseInt(report.hands),
+        hands: report.hands ? parseInt(report.hands) : null,
       };
 
       if (report.id) {
@@ -272,7 +282,13 @@ export default function WeeklyReportsPage() {
     pnl: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.pnl) || 0), 0),
     rake: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.rake) || 0), 0),
     hands: Object.values(reports).reduce((sum, r) => sum + (parseInt(r?.hands) || 0), 0),
-    diamondClubAmount: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.diamond_club_amount) || 0), 0),
+    totalAmount: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.player_amount) || 0), 0),
+    playerAmount: Object.values(reports).reduce((sum, r) => {
+      const hasAgent = parseFloat(r?.agent_commission_percentage) > 0;
+      const amount = hasAgent ? parseFloat(r?.player_amount_net) : parseFloat(r?.player_amount);
+      return sum + (amount || 0);
+    }, 0),
+    agentAmount: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.agent_amount) || 0), 0),
   };
 
   const selectedClub = clubs.find(c => c.id === selectedClubId);
@@ -377,13 +393,14 @@ export default function WeeklyReportsPage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b-2 border-slate-300">
-                          <th className="text-left py-3 px-4 font-semibold">Jugador</th>
-                          <th className="text-right py-3 px-4 font-semibold">PNL ($)</th>
-                          <th className="text-right py-3 px-4 font-semibold">Rake ($)</th>
-                          <th className="text-right py-3 px-4 font-semibold">Manos</th>
-                          <th className="text-right py-3 px-4 font-semibold">Club ($)</th>
-                          <th className="text-center py-3 px-4 font-semibold">Estado</th>
-                          <th className="text-center py-3 px-4 font-semibold">Acción</th>
+                          <th className="text-left py-3 px-2 font-semibold">Jugador</th>
+                          <th className="text-right py-3 px-2 font-semibold">PNL ($)</th>
+                          <th className="text-right py-3 px-2 font-semibold">Rake ($)</th>
+                          <th className="text-right py-3 px-2 font-semibold">Manos</th>
+                          <th className="text-right py-3 px-2 font-semibold">Total</th>
+                          <th className="text-right py-3 px-2 font-semibold">Jugador</th>
+                          <th className="text-right py-3 px-2 font-semibold">Agente</th>
+                          <th className="text-center py-3 px-2 font-semibold"></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -391,110 +408,125 @@ export default function WeeklyReportsPage() {
                           const report = reports[pc.id] || {};
                           const isComplete = report.id;
 
+                          // Calcular lo que recibe el jugador
+                          const hasAgent = parseFloat(report.agent_commission_percentage) > 0;
+                          const playerReceives = hasAgent
+                            ? parseFloat(report.player_amount_net)
+                            : parseFloat(report.player_amount);
+
                           return (
                             <tr key={pc.id} className="border-b border-slate-200 hover:bg-slate-50">
-                              <td className="py-3 px-4">
+                              <td className="py-3 px-2">
                                 <p className="font-medium text-slate-900">
                                   {pc.player.nickname || pc.player.full_name}
                                 </p>
                                 <p className="text-xs text-slate-500">{pc.player.player_code}</p>
                               </td>
-                              <td className="py-3 px-4">
-                                {isComplete ? (
-                                  <p className={`text-right font-medium ${parseFloat(report.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                    ${parseFloat(report.pnl || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </p>
-                                ) : (
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="0.00"
-                                    value={report.pnl || ""}
-                                    onChange={(e) => updateReportField(pc.id, "pnl", e.target.value)}
-                                    className="text-right"
-                                  />
-                                )}
+                              <td className="py-3 px-2">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  placeholder="0.00"
+                                  defaultValue={report.pnl || ""}
+                                  onBlur={(e) => updateReportField(pc.id, "pnl", e.target.value)}
+                                  className={`text-right ${parseFloat(report.pnl || 0) >= 0 ? '' : 'text-red-600'}`}
+                                />
                               </td>
-                              <td className="py-3 px-4">
-                                {isComplete ? (
-                                  <p className="text-right font-medium text-slate-900">
-                                    ${parseFloat(report.rake || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </p>
-                                ) : (
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="0.00"
-                                    value={report.rake || ""}
-                                    onChange={(e) => updateReportField(pc.id, "rake", e.target.value)}
-                                    className="text-right"
-                                  />
-                                )}
+                              <td className="py-3 px-2">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  placeholder="0.00"
+                                  defaultValue={report.rake || ""}
+                                  onBlur={(e) => updateReportField(pc.id, "rake", e.target.value)}
+                                  className="text-right"
+                                />
                               </td>
-                              <td className="py-3 px-4">
-                                {isComplete ? (
-                                  <p className="text-right font-medium text-slate-900">
-                                    {parseInt(report.hands || 0).toLocaleString('en-US')}
-                                  </p>
-                                ) : (
-                                  <Input
-                                    type="number"
-                                    placeholder="0"
-                                    value={report.hands || ""}
-                                    onChange={(e) => updateReportField(pc.id, "hands", e.target.value)}
-                                    className="text-right"
-                                  />
-                                )}
+                              <td className="py-3 px-2">
+                                <Input
+                                  type="number"
+                                  placeholder="0"
+                                  defaultValue={report.hands || ""}
+                                  onBlur={(e) => updateReportField(pc.id, "hands", e.target.value)}
+                                  className="text-right"
+                                />
                               </td>
-                              <td className="py-3 px-4">
-                                {isComplete && report.diamond_club_amount ? (
-                                  <p className="text-right font-medium text-blue-600">
-                                    ${parseFloat(report.diamond_club_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </p>
+                              <td className="py-3 px-2">
+                                {isComplete && report.player_amount ? (
+                                  <div className="text-right">
+                                    <p className="font-bold text-slate-900">
+                                      ${parseFloat(report.player_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                      {report.player_percentage}%
+                                    </p>
+                                  </div>
                                 ) : (
                                   <p className="text-right text-slate-400">-</p>
                                 )}
                               </td>
-                              <td className="py-3 px-4 text-center">
-                                {isComplete ? (
-                                  <Check className="w-5 h-5 text-green-600 mx-auto" />
+                              <td className="py-3 px-2">
+                                {isComplete && report.player_amount ? (
+                                  <div className="text-right">
+                                    <p className="font-bold text-green-600">
+                                      ${(playerReceives || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                  </div>
                                 ) : (
-                                  <AlertCircle className="w-5 h-5 text-slate-300 mx-auto" />
+                                  <p className="text-right text-slate-400">-</p>
                                 )}
                               </td>
-                              <td className="py-3 px-4 text-center">
-                                {!isComplete && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => saveReport(pc.id)}
-                                    disabled={saving || !report.pnl || !report.rake || !report.hands}
-                                  >
-                                    <Save className="w-4 h-4" />
-                                  </Button>
+                              <td className="py-3 px-2">
+                                {isComplete && hasAgent ? (
+                                  <div className="text-right">
+                                    <p className="font-bold text-orange-600">
+                                      ${parseFloat(report.agent_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                      {report.agent_commission_percentage}%
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <p className="text-right text-slate-400">-</p>
                                 )}
+                              </td>
+                              <td className="py-3 px-2 text-center">
+                                <Button
+                                  size="sm"
+                                  variant={isComplete ? "ghost" : "outline"}
+                                  onClick={() => saveReport(pc.id)}
+                                  disabled={saving || !report.pnl || !report.rake}
+                                >
+                                  {isComplete ? <Check className="w-4 h-4 text-green-600" /> : <Save className="w-4 h-4" />}
+                                </Button>
                               </td>
                             </tr>
                           );
                         })}
                         {/* Fila de totales */}
                         <tr className="border-t-2 border-slate-400 bg-slate-50 font-bold">
-                          <td className="py-3 px-4 text-slate-900">
+                          <td className="py-3 px-2 text-slate-900">
                             TOTAL {selectedClub?.name}
                           </td>
-                          <td className={`py-3 px-4 text-right ${clubTotals.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <td className={`py-3 px-2 text-right ${clubTotals.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                             ${clubTotals.pnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
-                          <td className="py-3 px-4 text-right text-slate-900">
+                          <td className="py-3 px-2 text-right text-slate-900">
                             ${clubTotals.rake.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
-                          <td className="py-3 px-4 text-right text-slate-900">
+                          <td className="py-3 px-2 text-right text-slate-900">
                             {clubTotals.hands.toLocaleString('en-US')}
                           </td>
-                          <td className="py-3 px-4 text-right text-blue-600">
-                            ${clubTotals.diamondClubAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <td className="py-3 px-2 text-right text-slate-900">
+                            ${clubTotals.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
-                          <td colSpan={2} className="py-3 px-4"></td>
+                          <td className="py-3 px-2 text-right text-green-600">
+                            ${clubTotals.playerAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-3 px-2 text-right text-orange-600">
+                            ${clubTotals.agentAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-3 px-2"></td>
                         </tr>
                       </tbody>
                     </table>
