@@ -171,6 +171,8 @@ export default function NewWeeklyPlayerReportsPage() {
       return;
     }
 
+    const clubId = selectedClub.id;
+
     async function loadPlayers() {
       const { data } = await supabase
         .from("player_clubs")
@@ -186,7 +188,7 @@ export default function NewWeeklyPlayerReportsPage() {
             nickname
           )
         `)
-        .eq("club_id", selectedClub.id);
+        .eq("club_id", clubId);
 
       if (data) {
         setPlayerReports(
