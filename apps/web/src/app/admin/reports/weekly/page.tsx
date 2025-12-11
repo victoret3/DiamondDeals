@@ -282,13 +282,12 @@ export default function WeeklyReportsPage() {
     pnl: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.pnl) || 0), 0),
     rake: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.rake) || 0), 0),
     hands: Object.values(reports).reduce((sum, r) => sum + (parseInt(r?.hands) || 0), 0),
-    totalAmount: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.player_amount) || 0), 0),
-    playerAmount: Object.values(reports).reduce((sum, r) => {
-      const hasAgent = parseFloat(r?.agent_commission_percentage) > 0;
-      const amount = hasAgent ? parseFloat(r?.player_amount_net) : parseFloat(r?.player_amount);
-      return sum + (amount || 0);
-    }, 0),
+    actionAmount: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.action_amount) || 0), 0),
+    rakebackAmount: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.player_amount) || 0), 0),
     agentAmount: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.agent_amount) || 0), 0),
+    totalAmount: Object.values(reports).reduce((sum, r) => {
+      return sum + ((parseFloat(r?.action_amount) || 0) + (parseFloat(r?.player_amount) || 0) - (parseFloat(r?.agent_amount) || 0));
+    }, 0),
   };
 
   const selectedClub = clubs.find(c => c.id === selectedClubId);
@@ -397,9 +396,10 @@ export default function WeeklyReportsPage() {
                           <th className="text-right py-3 px-2 font-semibold">PNL ($)</th>
                           <th className="text-right py-3 px-2 font-semibold">Rake ($)</th>
                           <th className="text-right py-3 px-2 font-semibold">Manos</th>
-                          <th className="text-right py-3 px-2 font-semibold">Total</th>
-                          <th className="text-right py-3 px-2 font-semibold">Jugador</th>
+                          <th className="text-right py-3 px-2 font-semibold">Action</th>
+                          <th className="text-right py-3 px-2 font-semibold">Rakeback</th>
                           <th className="text-right py-3 px-2 font-semibold">Agente</th>
+                          <th className="text-right py-3 px-2 font-semibold">Total</th>
                           <th className="text-center py-3 px-2 font-semibold"></th>
                         </tr>
                       </thead>
@@ -452,6 +452,20 @@ export default function WeeklyReportsPage() {
                                 />
                               </td>
                               <td className="py-3 px-2">
+                                {isComplete ? (
+                                  <div className="text-right">
+                                    <p className="font-medium text-purple-600">
+                                      ${parseFloat(report.action_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                      {report.action_percentage}%
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <p className="text-right text-slate-400">-</p>
+                                )}
+                              </td>
+                              <td className="py-3 px-2">
                                 {isComplete && report.player_amount ? (
                                   <div className="text-right">
                                     <p className="font-bold text-slate-900">
@@ -466,10 +480,13 @@ export default function WeeklyReportsPage() {
                                 )}
                               </td>
                               <td className="py-3 px-2">
-                                {isComplete && report.player_amount ? (
+                                {isComplete && hasAgent ? (
                                   <div className="text-right">
-                                    <p className="font-bold text-green-600">
-                                      ${(playerReceives || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    <p className="font-bold text-orange-600">
+                                      -${parseFloat(report.agent_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                      {report.agent_commission_percentage}%
                                     </p>
                                   </div>
                                 ) : (
@@ -477,13 +494,10 @@ export default function WeeklyReportsPage() {
                                 )}
                               </td>
                               <td className="py-3 px-2">
-                                {isComplete && hasAgent ? (
+                                {isComplete ? (
                                   <div className="text-right">
-                                    <p className="font-bold text-orange-600">
-                                      ${parseFloat(report.agent_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </p>
-                                    <p className="text-xs text-slate-500">
-                                      {report.agent_commission_percentage}%
+                                    <p className="font-bold text-green-600">
+                                      ${((parseFloat(report.action_amount) || 0) + (parseFloat(report.player_amount) || 0) - (parseFloat(report.agent_amount) || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </p>
                                   </div>
                                 ) : (
@@ -517,14 +531,17 @@ export default function WeeklyReportsPage() {
                           <td className="py-3 px-2 text-right text-slate-900">
                             {clubTotals.hands.toLocaleString('en-US')}
                           </td>
-                          <td className="py-3 px-2 text-right text-slate-900">
-                            ${clubTotals.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <td className={`py-3 px-2 text-right ${clubTotals.actionAmount >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
+                            ${clubTotals.actionAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
-                          <td className="py-3 px-2 text-right text-green-600">
-                            ${clubTotals.playerAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <td className="py-3 px-2 text-right text-slate-900">
+                            ${clubTotals.rakebackAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td className="py-3 px-2 text-right text-orange-600">
-                            ${clubTotals.agentAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            -${clubTotals.agentAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-3 px-2 text-right text-green-600">
+                            ${clubTotals.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td className="py-3 px-2"></td>
                         </tr>
