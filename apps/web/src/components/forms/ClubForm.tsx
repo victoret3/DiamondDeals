@@ -19,9 +19,6 @@ interface ClubFormProps {
     diamondClubAgreementType: "fixed" | "dynamic";
     diamondClubFixedPercentage: string;
     diamondClubTemplateId: string;
-    diamondPlayerAgreementType: "fixed" | "dynamic";
-    diamondPlayerFixedPercentage: string;
-    diamondPlayerTemplateId: string;
   };
   onSave: (data: any) => Promise<void>;
   isEditing?: boolean;
@@ -32,7 +29,6 @@ export default function ClubForm({ initialData, onSave, isEditing = false }: Clu
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [clubTemplates, setClubTemplates] = useState<any[]>([]);
-  const [playerTemplates, setPlayerTemplates] = useState<any[]>([]);
 
   const [formData, setFormData] = useState({
     name: initialData?.name || "",
@@ -42,9 +38,6 @@ export default function ClubForm({ initialData, onSave, isEditing = false }: Clu
     diamondClubAgreementType: (initialData?.diamondClubAgreementType || "fixed") as "fixed" | "dynamic",
     diamondClubFixedPercentage: initialData?.diamondClubFixedPercentage || "",
     diamondClubTemplateId: initialData?.diamondClubTemplateId || "",
-    diamondPlayerAgreementType: (initialData?.diamondPlayerAgreementType || "fixed") as "fixed" | "dynamic",
-    diamondPlayerFixedPercentage: initialData?.diamondPlayerFixedPercentage || "",
-    diamondPlayerTemplateId: initialData?.diamondPlayerTemplateId || "",
   });
 
   useEffect(() => {
@@ -61,9 +54,6 @@ export default function ClubForm({ initialData, onSave, isEditing = false }: Clu
         diamondClubAgreementType: initialData.diamondClubAgreementType,
         diamondClubFixedPercentage: initialData.diamondClubFixedPercentage,
         diamondClubTemplateId: initialData.diamondClubTemplateId,
-        diamondPlayerAgreementType: initialData.diamondPlayerAgreementType,
-        diamondPlayerFixedPercentage: initialData.diamondPlayerFixedPercentage,
-        diamondPlayerTemplateId: initialData.diamondPlayerTemplateId,
       });
     }
   }, [initialData]);
@@ -77,15 +67,6 @@ export default function ClubForm({ initialData, onSave, isEditing = false }: Clu
       .order("name");
 
     if (clubData) setClubTemplates(clubData);
-
-    // Cargar templates Diamond-Player
-    const { data: playerData } = await supabase
-      .from("diamond_player_agreement_templates")
-      .select("*")
-      .eq("is_active", true)
-      .order("name");
-
-    if (playerData) setPlayerTemplates(playerData);
   };
 
   const handleNameChange = (name: string) => {
@@ -167,28 +148,17 @@ export default function ClubForm({ initialData, onSave, isEditing = false }: Clu
         code: formData.code,
         logo_url: formData.logoUrl || null,
         action_percentage: parseFloat(formData.actionPercentage),
-        base_rakeback_percentage: parseFloat(formData.diamondPlayerFixedPercentage) || 0,
         is_active: true,
         diamond_club_agreement_type: formData.diamondClubAgreementType,
-        diamond_player_agreement_type: formData.diamondPlayerAgreementType,
       };
 
       // Diamond-Club agreement (lo que el club paga a Diamond)
       if (formData.diamondClubAgreementType === "fixed") {
-        clubData.diamond_club_fixed_percentage = parseFloat(formData.diamondClubFixedPercentage);
+        clubData.diamond_club_fixed_percentage = parseFloat(formData.diamondClubFixedPercentage) || 0;
         clubData.diamond_club_template_id = null;
       } else {
-        clubData.diamond_club_template_id = formData.diamondClubTemplateId;
+        clubData.diamond_club_template_id = formData.diamondClubTemplateId || null;
         clubData.diamond_club_fixed_percentage = null;
-      }
-
-      // Diamond-Player agreement (lo que el jugador recibe)
-      if (formData.diamondPlayerAgreementType === "fixed") {
-        clubData.diamond_player_fixed_percentage = parseFloat(formData.diamondPlayerFixedPercentage);
-        clubData.diamond_player_template_id = null;
-      } else {
-        clubData.diamond_player_template_id = formData.diamondPlayerTemplateId;
-        clubData.diamond_player_fixed_percentage = null;
       }
 
       await onSave(clubData);
@@ -283,9 +253,12 @@ export default function ClubForm({ initialData, onSave, isEditing = false }: Clu
           </p>
         </div>
 
-        {/* Sección: Club → Diamond */}
+        {/* Sección: Acuerdo Club → Diamond */}
         <div className="border-t pt-4 mt-4">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Club → Diamond (lo que el club paga)</h3>
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Acuerdo Club → Diamond</h3>
+          <p className="text-xs text-slate-500 mb-3">
+            Configura el porcentaje que el club paga a Diamond del rake action
+          </p>
 
           <div className="space-y-2">
             <Label>Tipo de Acuerdo *</Label>
@@ -307,7 +280,7 @@ export default function ClubForm({ initialData, onSave, isEditing = false }: Clu
 
           {formData.diamondClubAgreementType === "fixed" ? (
             <div className="space-y-2 mt-3">
-              <Label htmlFor="diamondClubFixed">Porcentaje que paga el Club</Label>
+              <Label htmlFor="diamondClubFixed">Porcentaje que paga el Club a Diamond</Label>
               <div className="relative">
                 <Input
                   id="diamondClubFixed"
@@ -340,73 +313,6 @@ export default function ClubForm({ initialData, onSave, isEditing = false }: Clu
                 </SelectTrigger>
                 <SelectContent>
                   {clubTemplates.map((template) => (
-                    <SelectItem key={template.id} value={template.id}>
-                      {template.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </div>
-
-        {/* Sección: Diamond → Jugador */}
-        <div className="border-t pt-4 mt-4">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Diamond → Jugador (lo que el jugador recibe)</h3>
-
-          <div className="space-y-2">
-            <Label>Tipo de Acuerdo *</Label>
-            <Select
-              value={formData.diamondPlayerAgreementType}
-              onValueChange={(value: "fixed" | "dynamic") =>
-                setFormData({ ...formData, diamondPlayerAgreementType: value })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="fixed">Porcentaje Fijo</SelectItem>
-                <SelectItem value="dynamic">Dinámico (basado en rendimiento)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {formData.diamondPlayerAgreementType === "fixed" ? (
-            <div className="space-y-2 mt-3">
-              <Label htmlFor="diamondPlayerFixed">Porcentaje que recibe el Jugador</Label>
-              <div className="relative">
-                <Input
-                  id="diamondPlayerFixed"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={formData.diamondPlayerFixedPercentage}
-                  onChange={(e) => setFormData({ ...formData, diamondPlayerFixedPercentage: e.target.value })}
-                  placeholder="Ej: 50"
-                  className="pr-8"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">
-                  %
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                % del Rake Action que el jugador recibe de Diamond
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2 mt-3">
-              <Label>Template de Condiciones</Label>
-              <Select
-                value={formData.diamondPlayerTemplateId}
-                onValueChange={(value) => setFormData({ ...formData, diamondPlayerTemplateId: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un template" />
-                </SelectTrigger>
-                <SelectContent>
-                  {playerTemplates.map((template) => (
                     <SelectItem key={template.id} value={template.id}>
                       {template.name}
                     </SelectItem>
