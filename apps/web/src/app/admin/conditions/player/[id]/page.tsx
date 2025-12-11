@@ -178,19 +178,23 @@ export default function PlayerConditionDetailPage() {
       const newRules: any[] = [];
       let priority = 1;
 
-      RATIO_RANGES.forEach(ratio => {
-        HANDS_RANGES.forEach(hands => {
+      for (const ratio of RATIO_RANGES) {
+        for (const hands of HANDS_RANGES) {
+          const percentage = tableData[ratio.id]?.[hands.id];
+          if (percentage === undefined || percentage === null) {
+            throw new Error(`Falta el porcentaje para ratio "${ratio.label}" y manos "${hands.label}"`);
+          }
           newRules.push({
             template_id: templateId,
             ratio_min: ratio.min,
             ratio_max: ratio.max === 999 ? null : ratio.max,
             hands_min: hands.min,
             hands_max: hands.max,
-            player_percentage: tableData[ratio.id]?.[hands.id] || 30,
+            player_percentage: percentage,
             priority: priority++,
           });
-        });
-      });
+        }
+      }
 
       const { error: rulesError } = await supabase
         .from("diamond_player_agreement_rules")
