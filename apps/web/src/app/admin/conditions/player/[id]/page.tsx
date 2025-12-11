@@ -38,11 +38,12 @@ function getHandsRangeId(handsMin: number): string {
 }
 
 function getRatioRangeId(ratioMin: number): string {
-  if (ratioMin <= -0.5 || ratioMin === -999) return "r1";
-  if (ratioMin >= -0.5 && ratioMin < 0) return "r2";
-  if (ratioMin >= 0 && ratioMin < 0.25) return "r3";
-  if (ratioMin >= 0.25 && ratioMin < 0.5) return "r4";
-  return "r5";
+  // Match based on the exact ratio_min values stored in the database
+  if (ratioMin === -999 || ratioMin < -0.5) return "r1";
+  if (ratioMin === -0.5) return "r2";
+  if (ratioMin === 0) return "r3";
+  if (ratioMin === 0.25) return "r4";
+  return "r5"; // 0.5 or greater
 }
 
 // Default values based on the screenshot pattern
@@ -163,10 +164,15 @@ export default function PlayerConditionDetailPage() {
       if (templateError) throw templateError;
 
       // Delete existing rules
-      await supabase
+      const { error: deleteError } = await supabase
         .from("diamond_player_agreement_rules")
         .delete()
         .eq("template_id", templateId);
+
+      if (deleteError) {
+        console.error("Error deleting rules:", deleteError);
+        throw deleteError;
+      }
 
       // Create new rules from table data
       const newRules: any[] = [];
