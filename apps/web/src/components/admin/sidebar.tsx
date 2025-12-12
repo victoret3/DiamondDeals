@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   Users,
   Building2,
-  Settings,
   LogOut,
   Shield,
   FileText,
@@ -66,11 +65,6 @@ const menuItems = [
     title: "Condiciones Jugador",
     href: "/admin/conditions/player",
     icon: User,
-  },
-  {
-    title: "Ajustes",
-    href: "/admin/settings",
-    icon: Settings,
   },
 ];
 

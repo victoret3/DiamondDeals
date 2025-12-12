@@ -106,6 +106,7 @@ export default function WeeklyReportsPage() {
         id,
         name,
         code,
+        logo_url,
         diamond_club_agreement_type,
         diamond_club_fixed_percentage,
         diamond_club_template_id
@@ -421,22 +422,48 @@ export default function WeeklyReportsPage() {
               </Button>
             </div>
 
-            {/* Club Selector */}
-            <div className="flex items-center gap-4">
-              <Building2 className="w-5 h-5 text-blue-600" />
-              <div className="flex-1">
-                <Select value={selectedClubId} onValueChange={setSelectedClubId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar club" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clubs.map((club) => (
-                      <SelectItem key={club.id} value={club.id}>
-                        {club.name} ({club.code})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {/* Club Selector - Logo Grid */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-blue-600" />
+                <span className="text-sm font-medium text-slate-700">Selecciona un club</span>
+              </div>
+              <div className="flex flex-wrap gap-4">
+                {clubs.map((club) => (
+                  <button
+                    key={club.id}
+                    onClick={() => setSelectedClubId(club.id)}
+                    className={`relative flex flex-col items-center p-4 rounded-xl border-2 transition-all hover:shadow-lg ${
+                      selectedClubId === club.id
+                        ? 'border-blue-500 bg-blue-50 shadow-lg'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="w-20 h-20 flex items-center justify-center">
+                      {club.logo_url ? (
+                        <img
+                          src={club.logo_url}
+                          alt={club.name}
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg flex items-center justify-center">
+                          <Building2 className="w-10 h-10 text-slate-400" />
+                        </div>
+                      )}
+                    </div>
+                    <span className={`mt-3 text-sm font-medium ${
+                      selectedClubId === club.id ? 'text-blue-700' : 'text-slate-600'
+                    }`}>
+                      {club.name}
+                    </span>
+                    {selectedClubId === club.id && (
+                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center shadow-md">
+                        <Check className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                  </button>
+                ))}
               </div>
             </div>
           </CardContent>

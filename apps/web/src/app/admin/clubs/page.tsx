@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/ui/loading";
 import { createClient } from "@/lib/supabase/client";
-import { Building2, Plus, Eye, Power } from "lucide-react";
+import { Building2, Plus, Eye, Power, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 
 export default function ClubsPage() {
   const supabase = createClient();
@@ -40,6 +41,32 @@ export default function ClubsPage() {
       .eq("id", clubId);
 
     if (!error) {
+      loadClubs();
+    }
+  };
+
+  const deleteClub = async (club: any) => {
+    const playerCount = club.player_clubs?.length || 0;
+
+    if (playerCount > 0) {
+      toast.error(`No se puede eliminar: el club tiene ${playerCount} jugador(es) asignados`);
+      return;
+    }
+
+    const confirmed = window.confirm(`¿Estás seguro de eliminar el club "${club.name}"? Esta acción no se puede deshacer.`);
+
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("clubs")
+      .delete()
+      .eq("id", club.id);
+
+    if (error) {
+      toast.error("Error al eliminar el club");
+      console.error(error);
+    } else {
+      toast.success("Club eliminado correctamente");
       loadClubs();
     }
   };
@@ -80,7 +107,7 @@ export default function ClubsPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b-2 border-slate-300">
-                      <th className="text-left py-3 px-4 font-semibold">Nombre</th>
+                      <th className="text-left py-3 px-4 font-semibold">Club</th>
                       <th className="text-left py-3 px-4 font-semibold">Código</th>
                       <th className="text-center py-3 px-4 font-semibold">Estado</th>
                       <th className="text-right py-3 px-4 font-semibold">Action</th>
@@ -93,8 +120,20 @@ export default function ClubsPage() {
                     {clubs.map((club) => (
                       <tr key={club.id} className="border-b border-slate-200 hover:bg-slate-50">
                         <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4 text-slate-600" />
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 flex items-center justify-center flex-shrink-0">
+                              {club.logo_url ? (
+                                <img
+                                  src={club.logo_url}
+                                  alt={club.name}
+                                  className="max-w-full max-h-full object-contain"
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg flex items-center justify-center">
+                                  <Building2 className="w-6 h-6 text-slate-400" />
+                                </div>
+                              )}
+                            </div>
                             <span className="font-medium text-slate-900">{club.name}</span>
                           </div>
                         </td>
@@ -146,6 +185,15 @@ export default function ClubsPage() {
                                 <Eye className="w-4 h-4" />
                               </Button>
                             </Link>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => deleteClub(club)}
+                              title="Eliminar club"
+                              className="hover:bg-red-50 hover:border-red-300"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-500" />
+                            </Button>
                           </div>
                         </td>
                       </tr>

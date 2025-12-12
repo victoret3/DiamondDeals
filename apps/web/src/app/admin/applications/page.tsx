@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { Smartphone, Building2, Plus, Settings, Save } from "lucide-react";
+import { Smartphone, Building2, Plus, Settings, Save, Trash2, Pencil } from "lucide-react";
 import { Loading } from "@/components/ui/loading";
 
 interface Club {
@@ -30,6 +30,7 @@ interface Application {
   id: string;
   name: string;
   code: string;
+  logo_url: string | null;
   is_active: boolean;
   clubs: Club[];
 }
@@ -49,6 +50,12 @@ export default function ApplicationsPage() {
   const [showNewAppModal, setShowNewAppModal] = useState(false);
   const [newAppName, setNewAppName] = useState("");
   const [newAppCode, setNewAppCode] = useState("");
+  const [newAppLogo, setNewAppLogo] = useState("");
+
+  // Edit app modal
+  const [editingApp, setEditingApp] = useState<Application | null>(null);
+  const [editAppName, setEditAppName] = useState("");
+  const [editAppLogo, setEditAppLogo] = useState("");
 
   useEffect(() => {
     loadData();
@@ -150,6 +157,7 @@ export default function ApplicationsPage() {
         .insert({
           name: newAppName.trim(),
           code: newAppCode.trim().toLowerCase(),
+          logo_url: newAppLogo.trim() || null,
           is_active: true
         });
 
@@ -159,12 +167,71 @@ export default function ApplicationsPage() {
       setShowNewAppModal(false);
       setNewAppName("");
       setNewAppCode("");
+      setNewAppLogo("");
       loadData();
     } catch (error: any) {
       console.error("Error:", error);
       toast.error("Error al crear: " + error.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openEditModal = (app: Application) => {
+    setEditingApp(app);
+    setEditAppName(app.name);
+    setEditAppLogo(app.logo_url || "");
+  };
+
+  const updateApplication = async () => {
+    if (!editingApp || !editAppName.trim()) {
+      toast.error("El nombre es obligatorio");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("applications")
+        .update({
+          name: editAppName.trim(),
+          logo_url: editAppLogo.trim() || null,
+        })
+        .eq("id", editingApp.id);
+
+      if (error) throw error;
+
+      toast.success("Aplicación actualizada");
+      setEditingApp(null);
+      loadData();
+    } catch (error: any) {
+      console.error("Error:", error);
+      toast.error("Error al actualizar: " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteApplication = async (app: Application) => {
+    if (app.clubs.length > 0) {
+      toast.error(`No se puede eliminar: tiene ${app.clubs.length} club(s) asignados`);
+      return;
+    }
+
+    const confirmed = window.confirm(`¿Estás seguro de eliminar "${app.name}"? Esta acción no se puede deshacer.`);
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("applications")
+      .delete()
+      .eq("id", app.id);
+
+    if (error) {
+      toast.error("Error al eliminar la aplicación");
+      console.error(error);
+    } else {
+      toast.success("Aplicación eliminada");
+      loadData();
     }
   };
 
@@ -209,8 +276,18 @@ export default function ApplicationsPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                      <Smartphone className="w-5 h-5 text-purple-600" />
+                    <div className="w-14 h-14 flex items-center justify-center flex-shrink-0">
+                      {app.logo_url ? (
+                        <img
+                          src={app.logo_url}
+                          alt={app.name}
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      ) : (
+                        <div className="w-full h-full rounded-lg bg-purple-100 flex items-center justify-center">
+                          <Smartphone className="w-7 h-7 text-purple-600" />
+                        </div>
+                      )}
                     </div>
                     <div>
                       <CardTitle className="text-lg">{app.name}</CardTitle>
@@ -244,14 +321,31 @@ export default function ApplicationsPage() {
                     </div>
                   )}
 
-                  <Button
-                    variant="outline"
-                    className="w-full mt-2"
-                    onClick={() => openAssignModal(app)}
-                  >
-                    <Settings className="w-4 h-4 mr-2" />
-                    Asignar Clubs
-                  </Button>
+                  <div className="flex gap-2 mt-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => openAssignModal(app)}
+                    >
+                      <Settings className="w-4 h-4 mr-2" />
+                      Asignar Clubs
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => openEditModal(app)}
+                      title="Editar aplicación"
+                    >
+                      <Pencil className="w-4 h-4 text-slate-600" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => deleteApplication(app)}
+                      className="hover:bg-red-50 hover:border-red-300"
+                      title="Eliminar aplicación"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -357,6 +451,20 @@ export default function ApplicationsPage() {
                 Identificador único en minúsculas
               </p>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="app-logo">Logo URL</Label>
+              <Input
+                id="app-logo"
+                value={newAppLogo}
+                onChange={(e) => setNewAppLogo(e.target.value)}
+                placeholder="https://..."
+              />
+              {newAppLogo && (
+                <div className="flex justify-center p-2 bg-slate-50 rounded-lg">
+                  <img src={newAppLogo} alt="Preview" className="max-h-16 object-contain" />
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t">
@@ -366,6 +474,54 @@ export default function ApplicationsPage() {
             <Button onClick={createApplication} disabled={saving}>
               <Plus className="w-4 h-4 mr-2" />
               {saving ? "Creando..." : "Crear"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Application Modal */}
+      <Dialog open={!!editingApp} onOpenChange={() => setEditingApp(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Aplicación</DialogTitle>
+            <DialogDescription>
+              Modifica los datos de {editingApp?.name}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-app-name">Nombre *</Label>
+              <Input
+                id="edit-app-name"
+                value={editAppName}
+                onChange={(e) => setEditAppName(e.target.value)}
+                placeholder="Ej: PokerBros"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-app-logo">Logo URL</Label>
+              <Input
+                id="edit-app-logo"
+                value={editAppLogo}
+                onChange={(e) => setEditAppLogo(e.target.value)}
+                placeholder="https://..."
+              />
+              {editAppLogo && (
+                <div className="flex justify-center p-2 bg-slate-50 rounded-lg">
+                  <img src={editAppLogo} alt="Preview" className="max-h-16 object-contain" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setEditingApp(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={updateApplication} disabled={saving}>
+              <Save className="w-4 h-4 mr-2" />
+              {saving ? "Guardando..." : "Guardar"}
             </Button>
           </div>
         </DialogContent>
