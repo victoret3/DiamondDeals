@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/ui/loading";
 import { createClient } from "@/lib/supabase/client";
-import { Building2, Plus, Eye, Power } from "lucide-react";
+import { Building2, Plus, Eye, Power, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 export default function ClubConditionsPage() {
@@ -36,6 +36,28 @@ export default function ClubConditionsPage() {
     const { error } = await supabase
       .from("diamond_club_agreement_templates")
       .update({ is_active: !currentStatus })
+      .eq("id", templateId);
+
+    if (!error) {
+      loadTemplates();
+    }
+  };
+
+  const deleteTemplate = async (templateId: string, templateName: string) => {
+    if (!confirm(`¿Estás seguro de que quieres eliminar el template "${templateName}"?`)) {
+      return;
+    }
+
+    // Primero eliminar las reglas asociadas
+    await supabase
+      .from("diamond_club_agreement_rules")
+      .delete()
+      .eq("template_id", templateId);
+
+    // Luego eliminar el template
+    const { error } = await supabase
+      .from("diamond_club_agreement_templates")
+      .delete()
       .eq("id", templateId);
 
     if (!error) {
@@ -123,6 +145,14 @@ export default function ClubConditionsPage() {
                                 <Eye className="w-4 h-4" />
                               </Button>
                             </Link>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => deleteTemplate(template.id, template.name)}
+                              title="Eliminar template"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-600" />
+                            </Button>
                           </div>
                         </td>
                       </tr>

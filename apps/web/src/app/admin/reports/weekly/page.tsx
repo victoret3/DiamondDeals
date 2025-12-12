@@ -25,6 +25,7 @@ export default function WeeklyReportsPage() {
   const [selectedClubId, setSelectedClubId] = useState<string>("");
   const [playerClubs, setPlayerClubs] = useState<any[]>([]);
   const [reports, setReports] = useState<Record<string, any>>({});
+  const [diamondClubRules, setDiamondClubRules] = useState<any[]>([]);
 
   useEffect(() => {
     loadClubs();
@@ -33,8 +34,27 @@ export default function WeeklyReportsPage() {
   useEffect(() => {
     if (selectedClubId) {
       loadClubData();
+      loadDiamondClubRules();
     }
   }, [currentWeekStart, selectedClubId]);
+
+  const loadDiamondClubRules = async () => {
+    const club = clubs.find(c => c.id === selectedClubId);
+    if (!club || club.diamond_club_agreement_type !== 'dynamic' || !club.diamond_club_template_id) {
+      setDiamondClubRules([]);
+      return;
+    }
+
+    const { data } = await supabase
+      .from("diamond_club_agreement_rules")
+      .select("*")
+      .eq("template_id", club.diamond_club_template_id)
+      .order("priority", { ascending: false });
+
+    if (data) {
+      setDiamondClubRules(data);
+    }
+  };
 
   function getLastMonday() {
     const today = new Date();
@@ -82,7 +102,14 @@ export default function WeeklyReportsPage() {
     setLoading(true);
     const { data } = await supabase
       .from("clubs")
-      .select("id, name, code")
+      .select(`
+        id,
+        name,
+        code,
+        diamond_club_agreement_type,
+        diamond_club_fixed_percentage,
+        diamond_club_template_id
+      `)
       .eq("is_active", true)
       .order("name");
 
@@ -283,6 +310,7 @@ export default function WeeklyReportsPage() {
     rake: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.rake) || 0), 0),
     hands: Object.values(reports).reduce((sum, r) => sum + (parseInt(r?.hands) || 0), 0),
     actionAmount: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.action_amount) || 0), 0),
+    rakeAction: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.rake_action) || 0), 0),
     rakebackAmount: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.player_amount) || 0), 0),
     agentAmount: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.agent_amount) || 0), 0),
     totalAmount: Object.values(reports).reduce((sum, r) => {
@@ -291,6 +319,47 @@ export default function WeeklyReportsPage() {
   };
 
   const selectedClub = clubs.find(c => c.id === selectedClubId);
+
+  // Calcular ganancia de Diamond del Club
+  const calculateDiamondClubAmount = () => {
+    if (!selectedClub || clubTotals.rakeAction === 0) {
+      return { percentage: 0, amount: 0, type: 'fixed' as const };
+    }
+
+    const rawRatio = clubTotals.rake > 0 ? clubTotals.pnl / clubTotals.rake : 0;
+
+    if (selectedClub.diamond_club_agreement_type === 'fixed') {
+      const percentage = parseFloat(selectedClub.diamond_club_fixed_percentage) || 0;
+      return {
+        percentage,
+        amount: clubTotals.rakeAction * (percentage / 100),
+        type: 'fixed' as const
+      };
+    } else {
+      // Clampear el ratio: si es menor que -1 usa -1, si es mayor que 1 usa 1
+      const ratio = Math.max(-1, Math.min(1, rawRatio));
+
+      // Buscar en reglas dinámicas (ordenadas por prioridad desc)
+      for (const rule of diamondClubRules) {
+        const ratioMatches = ratio >= rule.ratio_min && (rule.ratio_max === null || ratio <= rule.ratio_max);
+        const rakeMatches = clubTotals.rake >= rule.rake_min && (rule.rake_max === null || clubTotals.rake <= rule.rake_max);
+
+        if (ratioMatches && rakeMatches) {
+          return {
+            percentage: parseFloat(rule.diamond_percentage),
+            amount: clubTotals.rakeAction * (parseFloat(rule.diamond_percentage) / 100),
+            type: 'dynamic' as const
+          };
+        }
+      }
+      // Si no hay regla que coincida, usar 0
+      return { percentage: 0, amount: 0, type: 'dynamic' as const };
+    }
+  };
+
+  const diamondClubCalc = calculateDiamondClubAmount();
+  const rawRatio = clubTotals.rake > 0 ? clubTotals.pnl / clubTotals.rake : 0;
+  const clampedRatio = Math.max(-1, Math.min(1, rawRatio));
 
   if (loading) {
     return (
@@ -550,6 +619,61 @@ export default function WeeklyReportsPage() {
                   </div>
                 </>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Resumen Diamond ↔ Club */}
+        {selectedClubId && completedCount > 0 && (
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg text-blue-900">
+                Ganancia Diamond ↔ Club
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div>
+                  <p className="text-sm text-slate-600">Rake Action Total</p>
+                  <p className="text-xl font-bold text-slate-900">
+                    ${clubTotals.rakeAction.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600">Ratio Club (PNL/Rake)</p>
+                  <p className="text-xl font-bold text-slate-900">
+                    {rawRatio.toFixed(2)}
+                    {(rawRatio < -1 || rawRatio > 1) && (
+                      <span className="text-sm text-slate-500 ml-1">
+                        → {clampedRatio.toFixed(1)}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600">
+                    % Diamond ({diamondClubCalc.type === 'fixed' ? 'Fijo' : 'Dinámico'})
+                  </p>
+                  <p className="text-xl font-bold text-blue-600">
+                    {diamondClubCalc.percentage.toFixed(2)}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600">Diamond Gana del Club</p>
+                  <p className="text-2xl font-bold text-blue-700">
+                    ${diamondClubCalc.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    - ${clubTotals.rakebackAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} rakeback
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600">Beneficio Neto Diamond</p>
+                  <p className={`text-2xl font-bold ${(diamondClubCalc.amount - clubTotals.rakebackAmount) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    ${(diamondClubCalc.amount - clubTotals.rakebackAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
