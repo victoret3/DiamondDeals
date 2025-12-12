@@ -51,6 +51,7 @@ export default function ApplicationsPage() {
   const [newAppName, setNewAppName] = useState("");
   const [newAppCode, setNewAppCode] = useState("");
   const [newAppLogo, setNewAppLogo] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   // Edit app modal
   const [editingApp, setEditingApp] = useState<Application | null>(null);
@@ -181,6 +182,50 @@ export default function ApplicationsPage() {
     setEditingApp(app);
     setEditAppName(app.name);
     setEditAppLogo(app.logo_url || "");
+  };
+
+  const handleLogoUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+    setLogoState: (url: string) => void
+  ) => {
+    try {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      if (!file.type.startsWith('image/')) {
+        toast.error('Por favor selecciona una imagen válida');
+        return;
+      }
+
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error('La imagen no debe superar 2MB');
+        return;
+      }
+
+      setUploading(true);
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `app-logos/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('assets')
+        .getPublicUrl(filePath);
+
+      setLogoState(publicUrl);
+      toast.success('Logo subido correctamente');
+    } catch (error: any) {
+      console.error('Error uploading logo:', error);
+      toast.error(error.message || 'Error al subir el logo');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const updateApplication = async () => {
@@ -452,18 +497,24 @@ export default function ApplicationsPage() {
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="app-logo">Logo URL</Label>
-              <Input
-                id="app-logo"
-                value={newAppLogo}
-                onChange={(e) => setNewAppLogo(e.target.value)}
-                placeholder="https://..."
-              />
-              {newAppLogo && (
-                <div className="flex justify-center p-2 bg-slate-50 rounded-lg">
-                  <img src={newAppLogo} alt="Preview" className="max-h-16 object-contain" />
+              <Label htmlFor="app-logo">Logo</Label>
+              <div className="flex items-center gap-4">
+                {newAppLogo && (
+                  <img src={newAppLogo} alt="Logo" className="w-16 h-16 object-contain rounded border" />
+                )}
+                <div className="flex-1">
+                  <Input
+                    id="app-logo"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleLogoUpload(e, setNewAppLogo)}
+                    disabled={uploading}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    {uploading ? 'Subiendo imagen...' : 'Imagen para identificar la app (máx 2MB)'}
+                  </p>
                 </div>
-              )}
+              </div>
             </div>
           </div>
 
@@ -500,18 +551,24 @@ export default function ApplicationsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-app-logo">Logo URL</Label>
-              <Input
-                id="edit-app-logo"
-                value={editAppLogo}
-                onChange={(e) => setEditAppLogo(e.target.value)}
-                placeholder="https://..."
-              />
-              {editAppLogo && (
-                <div className="flex justify-center p-2 bg-slate-50 rounded-lg">
-                  <img src={editAppLogo} alt="Preview" className="max-h-16 object-contain" />
+              <Label htmlFor="edit-app-logo">Logo</Label>
+              <div className="flex items-center gap-4">
+                {editAppLogo && (
+                  <img src={editAppLogo} alt="Logo" className="w-16 h-16 object-contain rounded border" />
+                )}
+                <div className="flex-1">
+                  <Input
+                    id="edit-app-logo"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleLogoUpload(e, setEditAppLogo)}
+                    disabled={uploading}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    {uploading ? 'Subiendo imagen...' : 'Imagen para identificar la app (máx 2MB)'}
+                  </p>
                 </div>
-              )}
+              </div>
             </div>
           </div>
 
