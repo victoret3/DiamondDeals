@@ -129,45 +129,20 @@ export default function PlayerDetailPage() {
       .neq("id", params.id)
       .order("full_name");
 
-    // Cargar clubs del jugador
+    // Cargar clubs del jugador con diamond_template_id
     const { data: clubsData } = await supabase
       .from("player_clubs")
       .select(`
         id, club_id, custom_diamond_agreement, diamond_agreement_type,
-        diamond_fixed_percentage,
+        diamond_fixed_percentage, diamond_template_id,
         club:clubs(id, name, code, application_id, application:applications(name))
       `)
       .eq("player_id", params.id);
 
-    // Cargar condiciones de jugador separadamente
-    const playerClubIds = clubsData?.map(pc => pc.id) || [];
-    let conditionsMap: Record<string, string> = {};
-
-    if (playerClubIds.length > 0) {
-      const { data: conditionsData, error: condError } = await supabase
-        .from("player_conditions")
-        .select("player_club_id, template_id")
-        .in("player_club_id", playerClubIds);
-
-      console.log("Player club IDs:", playerClubIds);
-      console.log("Conditions data:", conditionsData);
-      console.log("Conditions error:", condError);
-
-      if (conditionsData) {
-        conditionsData.forEach(c => {
-          if (c.template_id) {
-            conditionsMap[c.player_club_id] = c.template_id;
-          }
-        });
-      }
-    }
-
-    console.log("Conditions map:", conditionsMap);
-
-    // Mapear para incluir condition_template_id
+    // Mapear para usar diamond_template_id como condition_template_id
     const clubsWithTemplate = clubsData?.map(pc => ({
       ...pc,
-      condition_template_id: conditionsMap[pc.id] || null
+      condition_template_id: pc.diamond_template_id || null
     })) || [];
 
     // Cargar todas las aplicaciones
@@ -373,31 +348,19 @@ export default function PlayerDetailPage() {
 
     setSaving(true);
     try {
-      // Crear player_club
-      const { data: playerClub, error: pcError } = await supabase
+      // Crear player_club con todo incluido
+      const { error: pcError } = await supabase
         .from("player_clubs")
         .insert({
           player_id: player.id,
           club_id: newClubId,
           custom_diamond_agreement: true,
           diamond_agreement_type: newClubConditionType,
-          diamond_fixed_percentage: newClubConditionType === "fixed" ? newClubFixedPercentage : null
-        })
-        .select()
-        .single();
+          diamond_fixed_percentage: newClubConditionType === "fixed" ? newClubFixedPercentage : null,
+          diamond_template_id: newClubConditionType === "dynamic" ? newClubTemplateId : null
+        });
 
       if (pcError) throw pcError;
-
-      // Crear condición si es dinámico
-      if (newClubConditionType === "dynamic" && newClubTemplateId) {
-        await supabase
-          .from("player_conditions")
-          .insert({
-            player_club_id: playerClub.id,
-            condition_type: "dynamic",
-            template_id: newClubTemplateId
-          });
-      }
 
       toast.success("Club añadido");
       setShowAddClub(false);
@@ -430,13 +393,14 @@ export default function PlayerDetailPage() {
   };
 
   const updateClubCondition = async (playerClubId: string, type: string, value: number, templateId?: string) => {
-    // Actualizar player_clubs
+    // Actualizar player_clubs directamente con el template_id
     const { error } = await supabase
       .from("player_clubs")
       .update({
         custom_diamond_agreement: true,
         diamond_agreement_type: type,
-        diamond_fixed_percentage: type === "fixed" ? value : null
+        diamond_fixed_percentage: type === "fixed" ? value : null,
+        diamond_template_id: type === "dynamic" ? templateId : null
       })
       .eq("id", playerClubId);
 
@@ -445,38 +409,7 @@ export default function PlayerDetailPage() {
       return;
     }
 
-    // Si es dinámico, actualizar o crear player_conditions
-    if (type === "dynamic" && templateId) {
-      console.log("Saving dynamic condition:", { playerClubId, templateId });
-
-      // Primero eliminar condiciones existentes
-      const { error: delError } = await supabase
-        .from("player_conditions")
-        .delete()
-        .eq("player_club_id", playerClubId);
-
-      console.log("Delete error:", delError);
-
-      // Crear nueva condición
-      const { data: insertData, error: insertError } = await supabase
-        .from("player_conditions")
-        .insert({
-          player_club_id: playerClubId,
-          condition_type: "dynamic",
-          template_id: templateId
-        })
-        .select();
-
-      console.log("Insert data:", insertData);
-      console.log("Insert error:", insertError);
-    } else if (type === "fixed") {
-      // Si es fijo, eliminar condiciones dinámicas
-      await supabase
-        .from("player_conditions")
-        .delete()
-        .eq("player_club_id", playerClubId);
-    }
-
+    toast.success("Condiciones actualizadas");
     loadData();
   };
 

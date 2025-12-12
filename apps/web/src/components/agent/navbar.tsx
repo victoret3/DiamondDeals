@@ -19,7 +19,8 @@ import {
   Users,
   User,
   LogOut,
-  DollarSign
+  DollarSign,
+  FileText
 } from "lucide-react";
 
 export function AgentNavbar() {
@@ -45,6 +46,7 @@ export function AgentNavbar() {
 
   const navItems = [
     { href: "/agent/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/agent/reports", label: "Reportes", icon: FileText },
     { href: "/agent/referrals", label: "Mis Referidos", icon: Users },
     { href: "/agent/profile", label: "Mi Perfil", icon: User },
   ];

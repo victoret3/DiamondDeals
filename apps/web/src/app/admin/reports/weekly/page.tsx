@@ -233,15 +233,27 @@ export default function WeeklyReportsPage() {
 
     // Si ya existe, actualizar; si no, insertar
     if (report.id) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("weekly_player_reports")
         .update(reportData)
-        .eq("id", report.id);
+        .eq("id", report.id)
+        .select()
+        .single();
+
+      console.log("Update result:", data);
+      console.log("Update error:", error);
 
       if (error) {
         console.error("Update error:", error);
       } else {
-        console.log("Update successful");
+        console.log("Update successful, player_percentage:", data?.player_percentage, "player_amount:", data?.player_amount);
+        // Actualizar el estado con los datos calculados por el trigger
+        if (data) {
+          setReports(prev => ({
+            ...prev,
+            [playerClubId]: data
+          }));
+        }
       }
     } else {
       const { data, error } = await supabase
@@ -468,7 +480,7 @@ export default function WeeklyReportsPage() {
                           <th className="text-right py-3 px-2 font-semibold">Action</th>
                           <th className="text-right py-3 px-2 font-semibold">Rakeback</th>
                           <th className="text-right py-3 px-2 font-semibold">Agente</th>
-                          <th className="text-right py-3 px-2 font-semibold">Total</th>
+                          <th className="text-right py-3 px-2 font-semibold">Ajuste</th>
                           <th className="text-center py-3 px-2 font-semibold"></th>
                         </tr>
                       </thead>
