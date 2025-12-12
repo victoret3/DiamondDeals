@@ -632,7 +632,7 @@ export default function WeeklyReportsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <p className="text-sm text-slate-600">Rake Action Total</p>
                   <p className="text-xl font-bold text-slate-900">
@@ -656,15 +656,6 @@ export default function WeeklyReportsPage() {
                   </p>
                   <p className="text-xl font-bold text-blue-600">
                     {diamondClubCalc.percentage.toFixed(2)}%
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-600">Diamond Gana del Club</p>
-                  <p className="text-2xl font-bold text-blue-700">
-                    ${diamondClubCalc.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    - ${clubTotals.rakebackAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} rakeback
                   </p>
                 </div>
                 <div>

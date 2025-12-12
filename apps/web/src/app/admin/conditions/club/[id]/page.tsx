@@ -100,9 +100,10 @@ export default function ClubConditionDetailPage() {
     // Initialize table data with defaults
     const data: TableData = {};
     RATIOS.forEach(ratio => {
-      data[ratio.toString()] = {};
+      const key = ratio.toFixed(1);
+      data[key] = {};
       RAKE_RANGES.forEach(range => {
-        data[ratio.toString()][range.id] = getDefaultPercentage(ratio, range.id);
+        data[key][range.id] = getDefaultPercentage(ratio, range.id);
       });
     });
 
@@ -123,10 +124,11 @@ export default function ClubConditionDetailPage() {
 
   const handleCellChange = (ratio: number, rakeRangeId: string, value: string) => {
     const numValue = parseFloat(value) || 0;
+    const key = ratio.toFixed(1);
     setTableData(prev => ({
       ...prev,
-      [ratio.toString()]: {
-        ...prev[ratio.toString()],
+      [key]: {
+        ...prev[key],
         [rakeRangeId]: Math.min(100, Math.max(0, numValue)),
       },
     }));
@@ -140,27 +142,46 @@ export default function ClubConditionDetailPage() {
 
     setSaving(true);
     try {
+      console.log("=== SAVING TEMPLATE ===");
+      console.log("Template ID:", templateId);
+      console.log("Form Data:", formData);
+      console.log("Table Data:", tableData);
+
       // Update template info
-      const { error: templateError } = await supabase
+      const { data: updateData, error: templateError } = await supabase
         .from("diamond_club_agreement_templates")
         .update({
           name: formData.name,
           description: formData.description || null,
         })
-        .eq("id", templateId);
+        .eq("id", templateId)
+        .select();
+
+      console.log("Update template result:", updateData);
+      console.log("Update template error:", templateError);
 
       if (templateError) throw templateError;
 
       // Delete existing rules
-      await supabase
+      const { data: deleteData, error: deleteError } = await supabase
         .from("diamond_club_agreement_rules")
         .delete()
-        .eq("template_id", templateId);
+        .eq("template_id", templateId)
+        .select();
+
+      console.log("Delete rules result:", deleteData);
+      console.log("Delete rules error:", deleteError);
+
+      if (deleteError) {
+        console.error("Delete error:", deleteError);
+        throw deleteError;
+      }
 
       // Create new rules from table data
       const newRules: any[] = [];
 
       RATIOS.forEach(ratio => {
+        const key = ratio.toFixed(1);
         RAKE_RANGES.forEach(range => {
           newRules.push({
             template_id: templateId,
@@ -168,14 +189,21 @@ export default function ClubConditionDetailPage() {
             ratio_max: ratio === 1.0 ? null : Math.round((ratio + 0.1) * 10) / 10,
             rake_min: range.min,
             rake_max: range.max,
-            diamond_percentage: tableData[ratio.toString()]?.[range.id] || 50,
+            diamond_percentage: tableData[key]?.[range.id] || 50,
           });
         });
       });
 
-      const { error: rulesError } = await supabase
+      console.log("New rules to insert:", newRules.length, "rules");
+      console.log("First 3 rules:", newRules.slice(0, 3));
+
+      const { data: insertData, error: rulesError } = await supabase
         .from("diamond_club_agreement_rules")
-        .insert(newRules);
+        .insert(newRules)
+        .select();
+
+      console.log("Insert rules result:", insertData?.length, "inserted");
+      console.log("Insert rules error:", rulesError);
 
       if (rulesError) throw rulesError;
 
@@ -304,7 +332,7 @@ export default function ClubConditionDetailPage() {
                             min="0"
                             max="100"
                             step="0.5"
-                            value={tableData[ratio.toString()]?.[range.id] || 0}
+                            value={tableData[ratio.toFixed(1)]?.[range.id] || 0}
                             onChange={(e) => handleCellChange(ratio, range.id, e.target.value)}
                             className="w-20 mx-auto text-center h-8 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
