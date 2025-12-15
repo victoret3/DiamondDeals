@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LayoutDashboard, User, LogOut, Building2, TrendingUp, FileText } from "lucide-react";
+import { LayoutDashboard, User, LogOut, FileText } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -27,11 +27,6 @@ const menuItems = [
     title: "Reportes",
     href: "/player/reports",
     icon: FileText,
-  },
-  {
-    title: "Mis Clubs",
-    href: "/player/clubs",
-    icon: Building2,
   },
 ];
 

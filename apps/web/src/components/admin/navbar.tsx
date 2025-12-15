@@ -22,7 +22,8 @@ import {
   LogOut,
   Shield,
   FileText,
-  Table
+  Table,
+  Bell
 } from "lucide-react";
 
 export function AdminNavbar() {
@@ -30,6 +31,7 @@ export function AdminNavbar() {
   const router = useRouter();
   const supabase = createClient();
   const [userEmail, setUserEmail] = useState<string>("");
+  const [pendingPlayers, setPendingPlayers] = useState(0);
 
   useEffect(() => {
     async function getUser() {
@@ -39,7 +41,17 @@ export function AdminNavbar() {
       }
     }
     getUser();
+    loadPendingPlayers();
   }, []);
+
+  const loadPendingPlayers = async () => {
+    const { count } = await supabase
+      .from("players")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pending");
+
+    setPendingPlayers(count || 0);
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -91,6 +103,18 @@ export function AdminNavbar() {
             );
           })}
         </div>
+
+        {/* Notifications */}
+        {pendingPlayers > 0 && (
+          <Link href="/admin/players?status=pending">
+            <Button variant="ghost" size="icon" className="relative mr-2">
+              <Bell className="w-5 h-5" />
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
+                {pendingPlayers > 9 ? "9+" : pendingPlayers}
+              </span>
+            </Button>
+          </Link>
+        )}
 
         {/* User Menu */}
         <DropdownMenu>

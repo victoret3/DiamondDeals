@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Save, UserCheck, Building2, Plus, Trash2, Smartphone, Link2, Unlink } from "lucide-react";
+import { ArrowLeft, Save, UserCheck, Building2, Plus, Trash2, Smartphone, Link2, Unlink, Pencil, Check, X } from "lucide-react";
 import Link from "next/link";
 
 interface Application {
@@ -104,6 +104,10 @@ export default function PlayerDetailPage() {
   // User linking
   const [availableUsers, setAvailableUsers] = useState<any[]>([]);
   const [selectedUserId, setSelectedUserId] = useState("");
+
+  // Player code editing
+  const [editingCode, setEditingCode] = useState(false);
+  const [newPlayerCode, setNewPlayerCode] = useState("");
 
   useEffect(() => {
     loadData();
@@ -324,6 +328,29 @@ export default function PlayerDetailPage() {
     setSaving(false);
   };
 
+  // ========== PLAYER CODE ==========
+  const savePlayerCode = async () => {
+    if (!newPlayerCode.trim()) {
+      toast.error("El código no puede estar vacío");
+      return;
+    }
+
+    setSaving(true);
+    const { error } = await supabase
+      .from("players")
+      .update({ player_code: newPlayerCode.trim().toUpperCase() })
+      .eq("id", player.id);
+
+    if (error) {
+      toast.error("Error: " + error.message);
+    } else {
+      toast.success("Código actualizado");
+      setEditingCode(false);
+      loadData();
+    }
+    setSaving(false);
+  };
+
   // ========== USER LINKING ==========
   const linkUser = async (userId: string) => {
     if (!userId || userId === "none") {
@@ -517,12 +544,53 @@ export default function PlayerDetailPage() {
                 {player.status}
               </Badge>
             </div>
-            <p className="text-slate-600 mt-1">
-              <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
-                {player.player_code}
-              </code>
-              <span className="ml-3 text-sm">{player.email}</span>
-            </p>
+            <div className="flex items-center gap-2 mt-1">
+              {editingCode ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={newPlayerCode}
+                    onChange={(e) => setNewPlayerCode(e.target.value.toUpperCase())}
+                    className="w-40 h-7 text-xs font-mono"
+                    placeholder="DD-XXXX-XXXX"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={savePlayerCode}
+                    disabled={saving}
+                    className="h-7 w-7 p-0"
+                  >
+                    <Check className="w-4 h-4 text-green-600" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingCode(false)}
+                    className="h-7 w-7 p-0"
+                  >
+                    <X className="w-4 h-4 text-red-600" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
+                    {player.player_code}
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setNewPlayerCode(player.player_code);
+                      setEditingCode(true);
+                    }}
+                    className="h-6 w-6 p-0"
+                  >
+                    <Pencil className="w-3 h-3 text-slate-400" />
+                  </Button>
+                </div>
+              )}
+              <span className="text-sm text-slate-600">{player.email}</span>
+            </div>
           </div>
         </div>
 
