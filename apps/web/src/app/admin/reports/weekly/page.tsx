@@ -327,7 +327,8 @@ export default function WeeklyReportsPage() {
     rakebackAmount: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.player_amount) || 0), 0),
     agentAmount: Object.values(reports).reduce((sum, r) => sum + (parseFloat(r?.agent_amount) || 0), 0),
     totalAmount: Object.values(reports).reduce((sum, r) => {
-      return sum + ((parseFloat(r?.action_amount) || 0) + (parseFloat(r?.player_amount) || 0) - (parseFloat(r?.agent_amount) || 0));
+      // Ajuste = Action + Rakeback (agente NO se resta del jugador, se resta de Diamond)
+      return sum + ((parseFloat(r?.action_amount) || 0) + (parseFloat(r?.player_amount) || 0));
     }, 0),
   };
 
@@ -590,8 +591,8 @@ export default function WeeklyReportsPage() {
                               <td className="py-3 px-2">
                                 {isComplete && hasAgent ? (
                                   <div className="text-right">
-                                    <p className="font-bold text-orange-600">
-                                      -${parseFloat(report.agent_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    <p className="font-bold text-purple-600">
+                                      ${parseFloat(report.agent_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </p>
                                     <p className="text-xs text-slate-500">
                                       {report.agent_commission_percentage}%
@@ -605,7 +606,7 @@ export default function WeeklyReportsPage() {
                                 {isComplete ? (
                                   <div className="text-right">
                                     <p className="font-bold text-green-600">
-                                      ${((parseFloat(report.action_amount) || 0) + (parseFloat(report.player_amount) || 0) - (parseFloat(report.agent_amount) || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      ${((parseFloat(report.action_amount) || 0) + (parseFloat(report.player_amount) || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </p>
                                   </div>
                                 ) : (
@@ -645,8 +646,8 @@ export default function WeeklyReportsPage() {
                           <td className="py-3 px-2 text-right text-slate-900">
                             ${clubTotals.rakebackAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
-                          <td className="py-3 px-2 text-right text-orange-600">
-                            -${clubTotals.agentAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <td className="py-3 px-2 text-right text-purple-600">
+                            ${clubTotals.agentAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td className="py-3 px-2 text-right text-green-600">
                             ${clubTotals.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
