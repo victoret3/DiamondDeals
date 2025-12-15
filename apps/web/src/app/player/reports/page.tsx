@@ -83,7 +83,8 @@ export default function PlayerReportsPage() {
     setPlayerClubs(clubsData || []);
     // Seleccionar el primer club automáticamente
     if (clubsData && clubsData.length > 0) {
-      setSelectedClubId(clubsData[0].club.id);
+      const firstClub = clubsData[0].club as { id: string; name: string; code: string };
+      setSelectedClubId(firstClub.id);
     }
     setLoading(false);
   };
@@ -92,7 +93,7 @@ export default function PlayerReportsPage() {
     if (!player || !selectedClubId) return;
 
     // Get player_club id for selected club
-    const pc = playerClubs.find(pc => pc.club.id === selectedClubId);
+    const pc = playerClubs.find(pc => (pc.club as { id: string }).id === selectedClubId);
     if (!pc) {
       setReports([]);
       return;
@@ -244,11 +245,14 @@ export default function PlayerReportsPage() {
                   <SelectValue placeholder="Selecciona un club" />
                 </SelectTrigger>
                 <SelectContent>
-                  {playerClubs.map((pc) => (
-                    <SelectItem key={pc.club.id} value={pc.club.id}>
-                      {pc.club.name}
-                    </SelectItem>
-                  ))}
+                  {playerClubs.map((pc) => {
+                    const club = pc.club as { id: string; name: string; code: string };
+                    return (
+                      <SelectItem key={club.id} value={club.id}>
+                        {club.name}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
