@@ -18,14 +18,26 @@ export default async function PlayerDashboard() {
     .single();
 
   // Obtener el player asociado al usuario
-  const { data: player } = await supabase
+  const { data: player, error: playerError } = await supabase
     .from("players")
-    .select(`
-      *,
-      club:clubs(id, name, code, logo_url, base_rakeback_percentage)
-    `)
+    .select("*")
     .eq("user_id", user.id)
     .single();
+
+  // Obtener los clubs del jugador
+  let playerClubs: any[] = [];
+  if (player) {
+    const { data: clubsData } = await supabase
+      .from("player_clubs")
+      .select(`
+        *,
+        club:clubs(id, name, code, logo_url)
+      `)
+      .eq("player_id", player.id)
+      .eq("is_active", true);
+
+    playerClubs = clubsData || [];
+  }
 
   // Si no hay player asociado, mostrar mensaje
   if (!player) {
@@ -41,6 +53,14 @@ export default async function PlayerDashboard() {
               <p className="text-slate-600">
                 Contacta con tu agente o administrador para que vincule tu cuenta a tu perfil de jugador.
               </p>
+              <p className="text-xs text-slate-400 mt-4">
+                Debug: user_id = {user.id}
+              </p>
+              {playerError && (
+                <p className="text-xs text-red-400 mt-1">
+                  Error: {playerError.message}
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -48,18 +68,30 @@ export default async function PlayerDashboard() {
     );
   }
 
-  // Obtener reportes semanales del jugador
-  const { data: weeklyReports } = await supabase
-    .from("weekly_player_reports")
-    .select("*")
-    .eq("player_id", player.id)
-    .order("week_start", { ascending: false })
-    .limit(10);
+  // Obtener reportes semanales del jugador (de todos sus clubs)
+  const playerClubIds = playerClubs.map(pc => pc.id);
+  let weeklyReports: any[] = [];
+
+  if (playerClubIds.length > 0) {
+    const { data: reportsData } = await supabase
+      .from("weekly_player_reports")
+      .select(`
+        *,
+        player_club:player_clubs(
+          club:clubs(name, code)
+        )
+      `)
+      .in("player_club_id", playerClubIds)
+      .order("week_start", { ascending: false })
+      .limit(10);
+
+    weeklyReports = reportsData || [];
+  }
 
   // Calcular totales
-  const totalRakeback = weeklyReports?.reduce((sum, r) => sum + (r.player_rakeback || 0), 0) || 0;
-  const totalResult = weeklyReports?.reduce((sum, r) => sum + (r.result || 0), 0) || 0;
-  const totalRake = weeklyReports?.reduce((sum, r) => sum + (r.rake || 0), 0) || 0;
+  const totalRakeback = weeklyReports.reduce((sum, r) => sum + (r.player_rakeback || 0), 0);
+  const totalResult = weeklyReports.reduce((sum, r) => sum + (r.result || 0), 0);
+  const totalRake = weeklyReports.reduce((sum, r) => sum + (r.rake || 0), 0);
 
   return (
     <div className="min-h-screen bg-slate-50 p-8">
@@ -75,14 +107,18 @@ export default async function PlayerDashboard() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-slate-600">
-                Club Actual
+                {playerClubs.length > 1 ? "Clubs" : "Club Actual"}
               </CardTitle>
               <Users className="w-4 h-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{player.club?.name || "-"}</div>
+              <div className="text-2xl font-bold">
+                {playerClubs.length > 0
+                  ? playerClubs.map(pc => pc.club?.name).join(", ")
+                  : "-"}
+              </div>
               <p className="text-xs text-slate-500 mt-1">
-                Rakeback base: {player.club?.base_rakeback_percentage || 0}%
+                {playerClubs.length} club{playerClubs.length !== 1 ? "es" : ""} activo{playerClubs.length !== 1 ? "s" : ""}
               </p>
             </CardContent>
           </Card>
@@ -116,31 +152,35 @@ export default async function PlayerDashboard() {
           </Card>
         </div>
 
-        {/* Mi Club */}
+        {/* Mis Clubs */}
         <Card>
           <CardHeader>
-            <CardTitle>Mi Club</CardTitle>
-            <CardDescription>Información de tu club actual</CardDescription>
+            <CardTitle>Mis Clubs</CardTitle>
+            <CardDescription>Clubs donde juegas actualmente</CardDescription>
           </CardHeader>
           <CardContent>
-            {player.club ? (
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center gap-4">
-                  {player.club.logo_url && (
-                    <img
-                      src={player.club.logo_url}
-                      alt={player.club.name}
-                      className="w-12 h-12 object-contain rounded"
-                    />
-                  )}
-                  <div>
-                    <h3 className="font-semibold text-slate-900">{player.club.name}</h3>
-                    <p className="text-sm text-slate-600">
-                      Código: {player.club.code}
-                    </p>
+            {playerClubs.length > 0 ? (
+              <div className="space-y-3">
+                {playerClubs.map((pc) => (
+                  <div key={pc.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center gap-4">
+                      {pc.club?.logo_url && (
+                        <img
+                          src={pc.club.logo_url}
+                          alt={pc.club.name}
+                          className="w-12 h-12 object-contain rounded"
+                        />
+                      )}
+                      <div>
+                        <h3 className="font-semibold text-slate-900">{pc.club?.name}</h3>
+                        <p className="text-sm text-slate-600">
+                          Código: {pc.club?.code}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="success">Activo</Badge>
                   </div>
-                </div>
-                <Badge variant="success">Activo</Badge>
+                ))}
               </div>
             ) : (
               <p className="text-slate-500">No estás asignado a ningún club</p>
@@ -155,7 +195,7 @@ export default async function PlayerDashboard() {
             <CardDescription>Tus últimas semanas de juego</CardDescription>
           </CardHeader>
           <CardContent>
-            {weeklyReports && weeklyReports.length > 0 ? (
+            {weeklyReports.length > 0 ? (
               <div className="space-y-3">
                 {weeklyReports.map((report) => (
                   <div
@@ -169,6 +209,9 @@ export default async function PlayerDashboard() {
                           Semana del {new Date(report.week_start).toLocaleDateString("es-ES")}
                         </p>
                         <p className="text-sm text-slate-500">
+                          {report.player_club?.club?.name && (
+                            <span className="mr-2">{report.player_club.club.name} •</span>
+                          )}
                           Rake: {report.rake?.toFixed(2) || 0}€
                         </p>
                       </div>

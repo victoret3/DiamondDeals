@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Save, UserCheck, Building2, Plus, Trash2, Smartphone } from "lucide-react";
+import { ArrowLeft, Save, UserCheck, Building2, Plus, Trash2, Smartphone, Link2, Unlink } from "lucide-react";
 import Link from "next/link";
 
 interface Application {
@@ -101,6 +101,10 @@ export default function PlayerDetailPage() {
   const [newClubFixedPercentage, setNewClubFixedPercentage] = useState(50);
   const [newClubTemplateId, setNewClubTemplateId] = useState("");
 
+  // User linking
+  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState("");
+
   useEffect(() => {
     loadData();
   }, []);
@@ -165,6 +169,27 @@ export default function PlayerDetailPage() {
       .select("id, name")
       .eq("is_active", true)
       .order("name");
+
+    // Cargar usuarios disponibles para vincular (profiles que no están vinculados a otros jugadores)
+    const { data: usersData } = await supabase
+      .from("profiles")
+      .select("id, email, full_name, role")
+      .in("role", ["player", "agent"])
+      .order("full_name");
+
+    // Filtrar usuarios que ya están vinculados a otros jugadores
+    if (usersData) {
+      const { data: linkedPlayers } = await supabase
+        .from("players")
+        .select("user_id")
+        .not("user_id", "is", null);
+
+      const linkedUserIds = linkedPlayers?.map(p => p.user_id) || [];
+      const available = usersData.filter(u =>
+        !linkedUserIds.includes(u.id) || (playerData && playerData.user_id === u.id)
+      );
+      setAvailableUsers(available);
+    }
 
     if (playerData) {
       setPlayer(playerData);
@@ -294,6 +319,45 @@ export default function PlayerDetailPage() {
       toast.error("Error: " + error.message);
     } else {
       toast.success(`Estado cambiado a ${newStatus}`);
+      loadData();
+    }
+    setSaving(false);
+  };
+
+  // ========== USER LINKING ==========
+  const linkUser = async (userId: string) => {
+    if (!userId || userId === "none") {
+      toast.error("Selecciona un usuario");
+      return;
+    }
+
+    setSaving(true);
+    const { error } = await supabase
+      .from("players")
+      .update({ user_id: userId })
+      .eq("id", player.id);
+
+    if (error) {
+      toast.error("Error: " + error.message);
+    } else {
+      toast.success("Usuario vinculado correctamente");
+      setSelectedUserId("");
+      loadData();
+    }
+    setSaving(false);
+  };
+
+  const unlinkUser = async () => {
+    setSaving(true);
+    const { error } = await supabase
+      .from("players")
+      .update({ user_id: null })
+      .eq("id", player.id);
+
+    if (error) {
+      toast.error("Error: " + error.message);
+    } else {
+      toast.success("Usuario desvinculado");
       loadData();
     }
     setSaving(false);
@@ -461,6 +525,86 @@ export default function PlayerDetailPage() {
             </p>
           </div>
         </div>
+
+        {/* Usuario Vinculado */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Link2 className="w-5 h-5 text-blue-600" />
+              <CardTitle>Usuario Vinculado</CardTitle>
+            </div>
+            <CardDescription>
+              El usuario de la app que puede acceder como este jugador
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {player.user_id ? (
+              <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div>
+                  <p className="font-medium text-green-800">Usuario vinculado</p>
+                  <p className="text-sm text-green-600">
+                    {availableUsers.find(u => u.id === player.user_id)?.email || player.user_id}
+                  </p>
+                </div>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="text-red-600 border-red-300 hover:bg-red-50">
+                      <Unlink className="w-4 h-4 mr-2" />
+                      Desvincular
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>¿Desvincular usuario?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        El usuario ya no podrá acceder a este perfil de jugador.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={unlinkUser}>
+                        Desvincular
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    Este jugador no tiene un usuario vinculado. Vincúlalo para que pueda acceder a su dashboard.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Select
+                    value={selectedUserId}
+                    onValueChange={setSelectedUserId}
+                    disabled={saving}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Selecciona un usuario..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableUsers.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {user.full_name || user.email} ({user.email})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    onClick={() => linkUser(selectedUserId)}
+                    disabled={saving || !selectedUserId}
+                  >
+                    <Link2 className="w-4 h-4 mr-2" />
+                    Vincular
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Estado y Agente */}
         <Card>
