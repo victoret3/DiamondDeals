@@ -75,6 +75,7 @@ interface PlayerClubData {
   diamond_agreement_type: string;
   diamond_fixed_percentage: number | null;
   condition_template_id?: string | null;
+  agent_commission_percentage: number;
 }
 
 export default function PlayerDetailPage() {
@@ -100,6 +101,7 @@ export default function PlayerDetailPage() {
   const [newClubConditionType, setNewClubConditionType] = useState("fixed");
   const [newClubFixedPercentage, setNewClubFixedPercentage] = useState(50);
   const [newClubTemplateId, setNewClubTemplateId] = useState("");
+  const [newClubAgentCommission, setNewClubAgentCommission] = useState(0);
 
   // User linking
   const [availableUsers, setAvailableUsers] = useState<any[]>([]);
@@ -142,7 +144,7 @@ export default function PlayerDetailPage() {
       .from("player_clubs")
       .select(`
         id, club_id, custom_diamond_agreement, diamond_agreement_type,
-        diamond_fixed_percentage, diamond_template_id,
+        diamond_fixed_percentage, diamond_template_id, agent_commission_percentage,
         club:clubs(id, name, code, application_id, application:applications(name))
       `)
       .eq("player_id", params.id);
@@ -150,7 +152,8 @@ export default function PlayerDetailPage() {
     // Mapear para usar diamond_template_id como condition_template_id
     const clubsWithTemplate = clubsData?.map(pc => ({
       ...pc,
-      condition_template_id: pc.diamond_template_id || null
+      condition_template_id: pc.diamond_template_id || null,
+      agent_commission_percentage: pc.agent_commission_percentage || 0
     })) || [];
 
     // Cargar todas las aplicaciones
@@ -411,17 +414,6 @@ export default function PlayerDetailPage() {
     setSaving(false);
   };
 
-  const updateAgentCommission = async (commission: number) => {
-    const { error } = await supabase
-      .from("players")
-      .update({ agent_commission_percentage: commission })
-      .eq("id", params.id);
-
-    if (!error) {
-      loadData();
-    }
-  };
-
   // ========== CLUBS ==========
   const getAvailableClubsToAdd = () => {
     const playerAppIds = playerApps.map(pa => pa.applicationId);
@@ -448,10 +440,17 @@ export default function PlayerDetailPage() {
           custom_diamond_agreement: true,
           diamond_agreement_type: newClubConditionType,
           diamond_fixed_percentage: newClubConditionType === "fixed" ? newClubFixedPercentage : null,
-          diamond_template_id: newClubConditionType === "dynamic" ? newClubTemplateId : null
+          diamond_template_id: newClubConditionType === "dynamic" ? newClubTemplateId : null,
+          agent_commission_percentage: player.referred_by_agent_id ? newClubAgentCommission : 0
         });
 
-      if (pcError) throw pcError;
+      if (pcError) {
+        if (pcError.code === "23505") {
+          toast.error("Este jugador ya está en ese club");
+          return;
+        }
+        throw pcError;
+      }
 
       toast.success("Club añadido");
       setShowAddClub(false);
@@ -459,6 +458,7 @@ export default function PlayerDetailPage() {
       setNewClubConditionType("fixed");
       setNewClubFixedPercentage(50);
       setNewClubTemplateId("");
+      setNewClubAgentCommission(0);
       loadData();
     } catch (error: any) {
       toast.error("Error: " + error.message);
@@ -501,6 +501,21 @@ export default function PlayerDetailPage() {
     }
 
     toast.success("Condiciones actualizadas");
+    loadData();
+  };
+
+  const updateAgentCommission = async (playerClubId: string, commission: number) => {
+    const { error } = await supabase
+      .from("player_clubs")
+      .update({ agent_commission_percentage: commission })
+      .eq("id", playerClubId);
+
+    if (error) {
+      toast.error("Error: " + error.message);
+      return;
+    }
+
+    toast.success("Comisión del agente actualizada");
     loadData();
   };
 
@@ -705,6 +720,47 @@ export default function PlayerDetailPage() {
           </CardContent>
         </Card>
 
+        {/* Agente Referidor */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-orange-600" />
+              <CardTitle>Agente Referidor</CardTitle>
+            </div>
+            <CardDescription>El agente que refirió a este jugador recibe comisión</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Agente</Label>
+              <Select
+                value={player.referred_by_agent_id || "none"}
+                onValueChange={updateAgent}
+                disabled={saving}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin agente" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin agente</SelectItem>
+                  {agents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id}>
+                      {agent.full_name} ({agent.nickname || agent.player_code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {player.referred_by_agent_id && (
+              <div className="p-4 bg-orange-50 rounded-lg">
+                <p className="text-sm text-orange-800">
+                  La comisión del agente se configura individualmente en cada club.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Aplicaciones */}
         <Card>
           <CardHeader>
@@ -901,6 +957,39 @@ export default function PlayerDetailPage() {
                           </SelectContent>
                         </Select>
                       )}
+
+                      {/* Comisión del agente (solo si tiene agente) */}
+                      {player.referred_by_agent_id && (
+                        <>
+                          <div className="w-px h-6 bg-slate-300 mx-2" />
+                          <Label className="text-sm text-orange-700">Comisión Agente:</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              defaultValue={pc.agent_commission_percentage || 0}
+                              onBlur={(e) => {
+                                const value = parseFloat(e.target.value);
+                                if (value >= 0 && value <= 100 && value !== pc.agent_commission_percentage) {
+                                  updateAgentCommission(pc.id, value);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  const value = parseFloat((e.target as HTMLInputElement).value);
+                                  if (value >= 0 && value <= 100) {
+                                    updateAgentCommission(pc.id, value);
+                                  }
+                                }
+                              }}
+                              className="w-20"
+                            />
+                            <span className="text-sm text-orange-600">%</span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -965,6 +1054,25 @@ export default function PlayerDetailPage() {
                     )}
                   </div>
 
+                  {/* Comisión del agente (solo si tiene agente) */}
+                  {player.referred_by_agent_id && (
+                    <div className="p-3 bg-orange-50 rounded-lg space-y-2">
+                      <Label className="text-sm text-orange-800">Comisión del Agente</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          value={newClubAgentCommission}
+                          onChange={(e) => setNewClubAgentCommission(parseFloat(e.target.value) || 0)}
+                          className="w-24"
+                        />
+                        <span className="text-sm text-orange-700">% del rakeback del jugador</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
                     <Button onClick={addClub} disabled={saving || !newClubId}>
                       <Plus className="w-4 h-4 mr-2" />
@@ -975,74 +1083,6 @@ export default function PlayerDetailPage() {
                     </Button>
                   </div>
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Agente Referidor */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <UserCheck className="w-5 h-5 text-orange-600" />
-              <CardTitle>Agente Referidor</CardTitle>
-            </div>
-            <CardDescription>El agente que refirió a este jugador recibe comisión</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Agente</Label>
-              <Select
-                value={player.referred_by_agent_id || "none"}
-                onValueChange={updateAgent}
-                disabled={saving}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sin agente" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin agente</SelectItem>
-                  {agents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.full_name} ({agent.nickname || agent.player_code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {player.referred_by_agent_id && (
-              <div className="p-4 bg-orange-50 rounded-lg space-y-2">
-                <Label className="text-orange-800">Comisión del agente</Label>
-                <div className="flex items-center gap-3">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    defaultValue={player.agent_commission_percentage || 0}
-                    onBlur={(e) => {
-                      const value = parseFloat(e.target.value);
-                      if (value >= 0 && value <= 100 && value !== player.agent_commission_percentage) {
-                        updateAgentCommission(value);
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const value = parseFloat((e.target as HTMLInputElement).value);
-                        if (value >= 0 && value <= 100) {
-                          updateAgentCommission(value);
-                        }
-                      }
-                    }}
-                    className="w-24"
-                    disabled={saving}
-                  />
-                  <span className="text-sm text-orange-800">% del rakeback del jugador</span>
-                </div>
-                <p className="text-xs text-orange-600">
-                  Este porcentaje se aplica a todo el rakeback que gane el jugador, independientemente del club.
-                </p>
               </div>
             )}
           </CardContent>
