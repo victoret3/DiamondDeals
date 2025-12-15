@@ -41,8 +41,8 @@ export default function AgentDashboardPage() {
         *,
         player_clubs (
           id,
-          club:clubs (name),
-          agent_commission_percentage
+          agent_commission_percentage,
+          club:clubs (id, name)
         )
       `)
       .eq("referred_by_agent_id", playerData?.id);
@@ -53,24 +53,28 @@ export default function AgentDashboardPage() {
     const fourWeeksAgo = new Date();
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
 
-    const { data: reportsData } = await supabase
-      .from("weekly_player_reports")
-      .select(`
-        *,
-        player_club:player_clubs (
-          id,
-          player:players (full_name, nickname),
-          club:clubs (name)
-        )
-      `)
-      .gte("week_start", fourWeeksAgo.toISOString().split("T")[0])
-      .in(
-        "player_club_id",
-        referralsData?.flatMap((r: any) => r.player_clubs.map((pc: any) => pc.id)) || []
-      )
-      .order("week_start", { ascending: false });
+    // Obtener todos los player_club_ids de los referidos
+    const playerClubIds = referralsData?.flatMap((r: any) =>
+      r.player_clubs?.map((pc: any) => pc.id) || []
+    ) || [];
 
-    if (reportsData) setWeeklyReports(reportsData);
+    if (playerClubIds.length > 0) {
+      const { data: reportsData } = await supabase
+        .from("weekly_player_reports")
+        .select(`
+          *,
+          player_club:player_clubs (
+            id,
+            player:players (full_name, nickname),
+            club:clubs (name)
+          )
+        `)
+        .gte("week_start", fourWeeksAgo.toISOString().split("T")[0])
+        .in("player_club_id", playerClubIds)
+        .order("week_start", { ascending: false });
+
+      if (reportsData) setWeeklyReports(reportsData);
+    }
 
     setLoading(false);
   };
@@ -92,7 +96,7 @@ export default function AgentDashboardPage() {
 
   // Calcular totales
   const totalCommissions = weeklyReports.reduce(
-    (sum, r) => sum + parseFloat(r.agent_commission_amount || 0),
+    (sum, r) => sum + parseFloat(r.agent_amount || 0),
     0
   );
 
@@ -171,7 +175,7 @@ export default function AgentDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {new Set(referrals.flatMap((r: any) => r.player_clubs.map((pc: any) => pc.club.id))).size}
+                {new Set(referrals.flatMap((r: any) => r.player_clubs?.map((pc: any) => pc.club?.id) || [])).size}
               </div>
               <p className="text-xs text-slate-600 mt-1">
                 Clubs con referidos
@@ -262,7 +266,7 @@ export default function AgentDashboardPage() {
                     </div>
                     <div className="text-right">
                       <p className="font-bold text-green-600">
-                        {formatCurrency(parseFloat(report.agent_commission_amount))}
+                        {formatCurrency(parseFloat(report.agent_amount || 0))}
                       </p>
                       <p className="text-xs text-slate-500">
                         {report.agent_commission_percentage}% comisión

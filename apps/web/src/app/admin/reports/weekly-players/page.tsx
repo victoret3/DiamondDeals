@@ -139,8 +139,8 @@ export default function WeeklyPlayerReportsPage() {
                           <td className="py-3 px-3 text-right">
                             {hasAgent ? (
                               <div>
-                                <div className="font-medium text-orange-600">
-                                  -{formatCurrency(parseFloat(r.agent_commission_amount))}
+                                <div className="font-medium text-purple-600">
+                                  {formatCurrency(parseFloat(r.agent_amount || 0))}
                                 </div>
                                 <div className="text-xs text-slate-500">
                                   {r.agent_commission_percentage}%

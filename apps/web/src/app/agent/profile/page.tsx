@@ -82,12 +82,12 @@ export default function AgentProfilePage() {
         if (playerClubs && playerClubs.length > 0) {
           const { data: reports } = await supabase
             .from("weekly_player_reports")
-            .select("agent_commission_amount")
+            .select("agent_amount")
             .in("player_club_id", playerClubs.map(pc => pc.id))
             .gte("week_start", fourWeeksAgo.toISOString().split("T")[0]);
 
           totalCommissions = reports?.reduce(
-            (sum, r) => sum + parseFloat(r.agent_commission_amount || 0),
+            (sum, r) => sum + parseFloat(r.agent_amount || 0),
             0
           ) || 0;
         }

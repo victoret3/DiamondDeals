@@ -34,7 +34,7 @@ export default function PlayerReportsPage() {
   const [loading, setLoading] = useState(true);
   const [player, setPlayer] = useState<any>(null);
   const [reports, setReports] = useState<WeeklyReport[]>([]);
-  const [selectedClubId, setSelectedClubId] = useState<string>("all");
+  const [selectedClubId, setSelectedClubId] = useState<string>("");
   const [playerClubs, setPlayerClubs] = useState<any[]>([]);
 
   useEffect(() => {
@@ -81,26 +81,24 @@ export default function PlayerReportsPage() {
       .eq("player_id", playerData.id);
 
     setPlayerClubs(clubsData || []);
+    // Seleccionar el primer club automáticamente
+    if (clubsData && clubsData.length > 0) {
+      setSelectedClubId(clubsData[0].club.id);
+    }
     setLoading(false);
   };
 
   const loadReports = async () => {
-    if (!player) return;
+    if (!player || !selectedClubId) return;
 
-    // Get player_club ids
-    let playerClubIds: string[] = [];
-
-    if (selectedClubId === "all") {
-      playerClubIds = playerClubs.map(pc => pc.id);
-    } else {
-      const pc = playerClubs.find(pc => pc.club.id === selectedClubId);
-      if (pc) playerClubIds = [pc.id];
-    }
-
-    if (playerClubIds.length === 0) {
+    // Get player_club id for selected club
+    const pc = playerClubs.find(pc => pc.club.id === selectedClubId);
+    if (!pc) {
       setReports([]);
       return;
     }
+
+    const playerClubIds = [pc.id];
 
     const { data: reportsData } = await supabase
       .from("weekly_player_reports")
@@ -243,10 +241,9 @@ export default function PlayerReportsPage() {
               <Calendar className="w-5 h-5 text-purple-600" />
               <Select value={selectedClubId} onValueChange={setSelectedClubId}>
                 <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Filtrar por club" />
+                  <SelectValue placeholder="Selecciona un club" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los clubs</SelectItem>
                   {playerClubs.map((pc) => (
                     <SelectItem key={pc.club.id} value={pc.club.id}>
                       {pc.club.name}

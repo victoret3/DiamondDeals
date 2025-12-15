@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/ui/loading";
 import { createClient } from "@/lib/supabase/client";
-import { Users, Building2, TrendingUp } from "lucide-react";
+import { Users, Building2, TrendingUp, ChevronRight } from "lucide-react";
 
 export default function ReferralsPage() {
+  const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [referrals, setReferrals] = useState<any[]>([]);
@@ -47,9 +49,9 @@ export default function ReferralsPage() {
         nickname,
         player_code,
         status,
-        agent_commission_percentage,
         player_clubs (
           id,
+          agent_commission_percentage,
           club:clubs (
             id,
             name,
@@ -175,26 +177,25 @@ export default function ReferralsPage() {
                   <thead>
                     <tr className="border-b-2 border-slate-300">
                       <th className="text-left py-3 px-4 font-semibold">Jugador</th>
-                      <th className="text-left py-3 px-4 font-semibold">Código</th>
                       <th className="text-center py-3 px-4 font-semibold">Estado</th>
                       <th className="text-left py-3 px-4 font-semibold">Apps</th>
                       <th className="text-left py-3 px-4 font-semibold">Clubs</th>
                       <th className="text-right py-3 px-4 font-semibold">Tu Comisión</th>
+                      <th className="w-8"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {referrals.map((referral) => (
-                      <tr key={referral.id} className="border-b border-slate-200 hover:bg-slate-50">
+                      <tr
+                        key={referral.id}
+                        onClick={() => router.push(`/agent/referrals/${referral.id}`)}
+                        className="border-b border-slate-200 hover:bg-slate-50 cursor-pointer"
+                      >
                         <td className="py-3 px-4">
                           <p className="font-medium text-slate-900">{referral.full_name}</p>
                           {referral.nickname && (
                             <p className="text-xs text-slate-500">@{referral.nickname}</p>
                           )}
-                        </td>
-                        <td className="py-3 px-4">
-                          <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
-                            {referral.player_code}
-                          </code>
                         </td>
                         <td className="py-3 px-4 text-center">
                           <Badge variant={referral.status === "active" ? "success" : "secondary"}>
@@ -228,13 +229,23 @@ export default function ReferralsPage() {
                           )}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          {referral.agent_commission_percentage > 0 ? (
-                            <span className="font-semibold text-green-600">
-                              {referral.agent_commission_percentage}%
-                            </span>
+                          {referral.player_clubs && referral.player_clubs.length > 0 ? (
+                            <div className="flex flex-col gap-1">
+                              {referral.player_clubs.map((pc: any) => (
+                                <span key={pc.id} className="text-xs">
+                                  <span className="text-slate-500">{pc.club.name}:</span>{" "}
+                                  <span className="font-semibold text-green-600">
+                                    {pc.agent_commission_percentage || 0}%
+                                  </span>
+                                </span>
+                              ))}
+                            </div>
                           ) : (
-                            <span className="text-slate-400">0%</span>
+                            <span className="text-slate-400">-</span>
                           )}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <ChevronRight className="w-4 h-4 text-slate-400" />
                         </td>
                       </tr>
                     ))}
