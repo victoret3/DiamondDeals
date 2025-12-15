@@ -89,9 +89,9 @@ export default async function PlayerDashboard() {
   }
 
   // Calcular totales
-  const totalRakeback = weeklyReports.reduce((sum, r) => sum + (r.player_rakeback || 0), 0);
-  const totalResult = weeklyReports.reduce((sum, r) => sum + (r.result || 0), 0);
-  const totalRake = weeklyReports.reduce((sum, r) => sum + (r.rake || 0), 0);
+  const totalRakeback = weeklyReports.reduce((sum, r) => sum + (parseFloat(r.player_amount) || 0), 0);
+  const totalResult = weeklyReports.reduce((sum, r) => sum + (parseFloat(r.pnl) || 0), 0);
+  const totalRake = weeklyReports.reduce((sum, r) => sum + (parseFloat(r.rake) || 0), 0);
 
   return (
     <div className="min-h-screen bg-slate-50 p-8">
@@ -212,16 +212,16 @@ export default async function PlayerDashboard() {
                           {report.player_club?.club?.name && (
                             <span className="mr-2">{report.player_club.club.name} •</span>
                           )}
-                          Rake: {report.rake?.toFixed(2) || 0}€
+                          Rake: {parseFloat(report.rake)?.toFixed(2) || '0.00'}€
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={`font-semibold ${(report.result || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                        {(report.result || 0) >= 0 ? "+" : ""}{(report.result || 0).toFixed(2)}€
+                      <p className={`font-semibold ${(parseFloat(report.pnl) || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {(parseFloat(report.pnl) || 0) >= 0 ? "+" : ""}{(parseFloat(report.pnl) || 0).toFixed(2)}€
                       </p>
                       <p className="text-sm text-yellow-600">
-                        Rakeback: {(report.player_rakeback || 0).toFixed(2)}€
+                        Rakeback: {(parseFloat(report.player_amount) || 0).toFixed(2)}€
                       </p>
                     </div>
                   </div>
